@@ -19,6 +19,8 @@ from .database import make_session_factory
 from .meo_api import MeoApi
 from .oauth import ALLOWED_SCOPES, DatabaseOAuthProvider
 
+logger = structlog.get_logger()
+
 
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -61,7 +63,12 @@ def create_app(settings: Settings | None = None) -> Starlette:
         try:
             redirect = await provider.complete_meo_callback(request.query_params.get("request_id", ""), request.query_params.get("code"), request.query_params.get("error"))
             return RedirectResponse(redirect, status_code=303)
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "oauth_callback_failed",
+                request_id=request.query_params.get("request_id", ""),
+                error_type=type(exc).__name__,
+            )
             return JSONResponse({"error": "authorization_failed"}, status_code=400)
 
     @asynccontextmanager

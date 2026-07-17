@@ -12,6 +12,13 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
+def is_expired(value: datetime) -> bool:
+    """Compare database timestamps safely, including SQLite test timestamps."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value <= now()
+
+
 def token() -> str:
     return secrets.token_urlsafe(32)
 

@@ -27,7 +27,7 @@ from .database import (
     OAuthClient,
     RefreshTokenRecord,
 )
-from .security import TokenCipher, digest, now, signed_reference, token
+from .security import TokenCipher, digest, is_expired, now, signed_reference, token
 
 ACCESS_TOKEN_TTL = timedelta(hours=1)
 AUTHORIZATION_CODE_TTL = timedelta(minutes=5)
@@ -89,11 +89,15 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
     async def complete_meo_callback(self, request_id: str, exchange_code: str | None, error: str | None) -> str:
         async with self.sessions() as session:
             record = await session.get(AuthorizationRequest, UUID(request_id))
-            if not record or record.consumed_at or record.expires_at <= now():
+            if not record or record.consumed_at or is_expired(record.expires_at):
                 raise AuthorizeError("access_denied", "Authorization request is invalid or expired.")
-            record.consumed_at = now()
-            await session.commit()
         if error:
+            async with self.sessions() as session:
+                denied_request = await session.get(AuthorizationRequest, UUID(request_id), with_for_update=True)
+                if not denied_request or denied_request.consumed_at or is_expired(denied_request.expires_at):
+                    raise AuthorizeError("access_denied", "Authorization request is invalid or expired.")
+                denied_request.consumed_at = now()
+                await session.commit()
             return self._client_redirect(record, error=error)
         if not exchange_code:
             raise AuthorizeError("access_denied", "Authorization was not completed.")
@@ -107,15 +111,46 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
             delegated_token_ciphertext=self.cipher.encrypt(str(payload["sanctum_token"])),
             expires_at=now() + REFRESH_TOKEN_TTL,
         )
-        code = AuthorizationCodeRecord(
-            code_hash=digest(authorization_code), grant_id=grant.id, client_id=record.client_id,
-            scopes=record.scopes, code_challenge=record.code_challenge, redirect_uri=record.redirect_uri,
-            redirect_uri_explicit=record.redirect_uri_explicit, resource=record.resource,
-            subject=str(payload["user_id"]), expires_at=now() + AUTHORIZATION_CODE_TTL,
-        )
-        async with self.sessions() as session:
-            session.add_all([grant, code])
-            await session.commit()
+        try:
+            async with self.sessions() as session:
+                locked_request = await session.get(
+                    AuthorizationRequest,
+                    UUID(request_id),
+                    with_for_update=True,
+                )
+                if (
+                    not locked_request
+                    or locked_request.consumed_at
+                    or is_expired(locked_request.expires_at)
+                ):
+                    raise AuthorizeError(
+                        "access_denied",
+                        "Authorization request is invalid or expired.",
+                    )
+
+                session.add(grant)
+                # The code references this grant. Flush explicitly so SQLAlchemy
+                # cannot emit the authorization-code INSERT first.
+                await session.flush()
+                session.add(
+                    AuthorizationCodeRecord(
+                        code_hash=digest(authorization_code),
+                        grant_id=grant.id,
+                        client_id=locked_request.client_id,
+                        scopes=locked_request.scopes,
+                        code_challenge=locked_request.code_challenge,
+                        redirect_uri=locked_request.redirect_uri,
+                        redirect_uri_explicit=locked_request.redirect_uri_explicit,
+                        resource=locked_request.resource,
+                        subject=str(payload["user_id"]),
+                        expires_at=now() + AUTHORIZATION_CODE_TTL,
+                    )
+                )
+                locked_request.consumed_at = now()
+                await session.commit()
+        except Exception:
+            await self._revoke_meo_token(str(payload["sanctum_token"]))
+            raise
         return self._client_redirect(record, code=authorization_code)
 
     async def _exchange_meo_code(self, code: str) -> dict:
@@ -128,6 +163,20 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
         if not isinstance(payload, dict) or not payload.get("sanctum_token") or payload.get("user_id") is None:
             raise AuthorizeError("server_error", "Meo token exchange returned an invalid response.")
         return payload
+
+    async def _revoke_meo_token(self, delegated_token: str) -> None:
+        headers = {"Authorization": f"Bearer {self.settings.meo_connector_api_key}"}
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"{str(self.settings.meo_base_url).rstrip('/')}/api/mcp-auth/revoke",
+                    json={"token": delegated_token},
+                    headers=headers,
+                )
+        except httpx.HTTPError:
+            # Best effort: the local grant never committed, so no client-facing
+            # credential can use this delegation even if upstream is unavailable.
+            pass
 
     def _client_redirect(self, request: AuthorizationRequest, code: str | None = None, error: str | None = None) -> str:
         parameters: dict[str, str] = {}
@@ -143,18 +192,18 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
     async def load_authorization_code(self, client: OAuthClientInformationFull, authorization_code: str) -> AuthorizationCode | None:
         async with self.sessions() as session:
             record = await session.scalar(select(AuthorizationCodeRecord).where(AuthorizationCodeRecord.code_hash == digest(authorization_code)))
-            if not record or record.client_id != client.client_id or record.expires_at <= now() or record.consumed_at:
+            if not record or record.client_id != client.client_id or is_expired(record.expires_at) or record.consumed_at:
                 return None
             return AuthorizationCode(code=authorization_code, scopes=record.scopes, expires_at=record.expires_at.timestamp(), client_id=record.client_id, code_challenge=record.code_challenge, redirect_uri=record.redirect_uri, redirect_uri_provided_explicitly=record.redirect_uri_explicit, resource=record.resource, subject=record.subject)
 
     async def exchange_authorization_code(self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode) -> OAuthToken:
         async with self.sessions() as session:
             record = await session.scalar(select(AuthorizationCodeRecord).where(AuthorizationCodeRecord.code_hash == digest(authorization_code.code)).with_for_update())
-            if not record or record.consumed_at or record.expires_at <= now():
+            if not record or record.consumed_at or is_expired(record.expires_at):
                 raise TokenError("invalid_grant", "Authorization code is invalid or already used.")
             record.consumed_at = now()
             grant = await session.get(Grant, record.grant_id)
-            if not grant or grant.revoked_at or grant.expires_at <= now():
+            if not grant or grant.revoked_at or is_expired(grant.expires_at):
                 raise TokenError("invalid_grant", "Grant is no longer active.")
             response = await self._issue_tokens(session, grant, client.client_id or "", record.scopes)
             await session.commit()
@@ -163,14 +212,14 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
     async def load_refresh_token(self, client: OAuthClientInformationFull, refresh_token: str) -> RefreshToken | None:
         async with self.sessions() as session:
             record = await session.scalar(select(RefreshTokenRecord).where(RefreshTokenRecord.token_hash == digest(refresh_token)))
-            if not record or record.client_id != client.client_id or record.expires_at <= now() or record.revoked_at:
+            if not record or record.client_id != client.client_id or is_expired(record.expires_at) or record.revoked_at:
                 return None
             return RefreshToken(token=refresh_token, client_id=record.client_id, scopes=record.scopes, expires_at=record.expires_at.timestamp(), subject=record.subject)
 
     async def exchange_refresh_token(self, client: OAuthClientInformationFull, refresh_token: RefreshToken, scopes: list[str]) -> OAuthToken:
         async with self.sessions() as session:
             record = await session.scalar(select(RefreshTokenRecord).where(RefreshTokenRecord.token_hash == digest(refresh_token.token)).with_for_update())
-            if not record or record.client_id != client.client_id or record.expires_at <= now() or record.revoked_at:
+            if not record or record.client_id != client.client_id or is_expired(record.expires_at) or record.revoked_at:
                 raise TokenError("invalid_grant", "Refresh token is invalid.")
             if record.consumed_at:
                 await session.execute(update(RefreshTokenRecord).where(RefreshTokenRecord.family_id == record.family_id).values(revoked_at=now()))
@@ -181,7 +230,7 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
                 raise TokenError("invalid_scope", "Scope escalation is not allowed.")
             record.consumed_at = now()
             grant = await session.get(Grant, record.grant_id)
-            if not grant or grant.revoked_at or grant.expires_at <= now():
+            if not grant or grant.revoked_at or is_expired(grant.expires_at):
                 raise TokenError("invalid_grant", "Grant is no longer active.")
             response = await self._issue_tokens(session, grant, record.client_id, record.scopes, family_id=record.family_id)
             await session.commit()
@@ -200,7 +249,7 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
     async def load_access_token(self, value: str) -> AccessToken | None:
         async with self.sessions() as session:
             record = await session.scalar(select(AccessTokenRecord).where(AccessTokenRecord.token_hash == digest(value)))
-            if not record or record.revoked_at or record.expires_at <= now() or record.resource != self.settings.resource:
+            if not record or record.revoked_at or is_expired(record.expires_at) or record.resource != self.settings.resource:
                 return None
             grant = await session.get(Grant, record.grant_id)
             if not grant or grant.revoked_at:
