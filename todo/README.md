@@ -18,7 +18,6 @@ the private operator runbook only.
 
 | Plan | Focus |
 |------|--------|
-| [00-mvp-stabilization.md](00-mvp-stabilization.md) | Complete OAuth, transport, security, and client acceptance coverage |
 | [01-mcp-feature-coverage.md](01-mcp-feature-coverage.md) | Full end-user MCP tool/scope coverage |
 | [02-documentation.md](02-documentation.md) | Docs beyond deployment (architecture, catalog, README) |
 | [03-agent-skill.md](03-agent-skill.md) | Cursor skill for operating/developing this gateway |
@@ -37,3 +36,9 @@ Complete plans end-to-end in this order:
 Do not begin a later plan merely because an earlier plan has partially landed.
 Meet its definition of done, update durable docs, move it to `todo/done/`, and
 verify the development client flow before continuing.
+
+## Completed plans
+
+| Plan | Focus |
+|------|-------|
+| [00-mvp-stabilization.md](done/00-mvp-stabilization.md) | OAuth, transport, security, and client acceptance foundation |
