@@ -1,0 +1,35 @@
+when:
+  - event: [push, manual]
+
+steps:
+  test:
+    image: python:3.12-slim
+    commands:
+      - pip install --no-cache-dir uv
+      - uv sync --all-groups
+      - TOKEN_ENCRYPTION_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA MEO_CONNECTOR_HMAC_SECRET=test MEO_CONNECTOR_API_KEY=test uv run pytest -q
+      - uv run ruff check src tests
+
+  deploy_dev:
+    image: alpine:3.22
+    when:
+      - branch: dev
+        event: [push, manual]
+    environment:
+      CATARCHY2_HOST:
+        from_secret: CATARCHY2_HOST
+      CATARCHY2_USER:
+        from_secret: CATARCHY2_USER
+      CATARCHY2_SSH_KEY:
+        from_secret: CATARCHY2_SSH_KEY
+      DEV_DEPLOY_PATH:
+        from_secret: DEV_DEPLOY_PATH
+    commands:
+      - apk add --no-cache openssh-client git curl bash
+      - test -n "$${CATARCHY2_HOST}" -a -n "$${CATARCHY2_USER}" -a -n "$${CATARCHY2_SSH_KEY}" -a -n "$${DEV_DEPLOY_PATH}"
+      - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+      - printf '%b' "$${CATARCHY2_SSH_KEY}" | tr -d '\r' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+      - ssh-keyscan -H "$${CATARCHY2_HOST}" >> ~/.ssh/known_hosts
+      - >-
+        ssh "$${CATARCHY2_USER}@$${CATARCHY2_HOST}"
+        "cd '$${DEV_DEPLOY_PATH}' && git fetch --prune origin && git checkout dev && git reset --hard '$${CI_COMMIT_SHA}' && chmod +x utils/deploy-ci.sh && ./utils/deploy-ci.sh '$${DEV_DEPLOY_PATH}' dev && curl -fsS https://mcp-dev.meo-mai-moi.com/health"
