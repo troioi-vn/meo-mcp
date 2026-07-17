@@ -214,7 +214,7 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
             record = await session.scalar(select(RefreshTokenRecord).where(RefreshTokenRecord.token_hash == digest(refresh_token)))
             if not record or record.client_id != client.client_id or is_expired(record.expires_at) or record.revoked_at:
                 return None
-            return RefreshToken(token=refresh_token, client_id=record.client_id, scopes=record.scopes, expires_at=record.expires_at.timestamp(), subject=record.subject)
+            return RefreshToken(token=refresh_token, client_id=record.client_id, scopes=record.scopes, expires_at=int(record.expires_at.timestamp()), subject=record.subject)
 
     async def exchange_refresh_token(self, client: OAuthClientInformationFull, refresh_token: RefreshToken, scopes: list[str]) -> OAuthToken:
         async with self.sessions() as session:
@@ -254,7 +254,7 @@ class DatabaseOAuthProvider(OAuthAuthorizationServerProvider[AuthorizationCode, 
             grant = await session.get(Grant, record.grant_id)
             if not grant or grant.revoked_at:
                 return None
-            return AccessToken(token=value, client_id=record.client_id, scopes=record.scopes, expires_at=record.expires_at.timestamp(), resource=record.resource, subject=record.subject)
+            return AccessToken(token=value, client_id=record.client_id, scopes=record.scopes, expires_at=int(record.expires_at.timestamp()), resource=record.resource, subject=record.subject)
 
     async def revoke_token(self, value: AccessToken | RefreshToken) -> None:
         async with self.sessions() as session:
