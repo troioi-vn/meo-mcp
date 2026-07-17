@@ -6,8 +6,9 @@ branch=${2:?branch required}
 test "$branch" = dev
 cd "$deploy_path"
 test -f .env
+docker compose build meo-mcp
 docker compose run --rm meo-mcp alembic upgrade head
-docker compose up -d --build --remove-orphans
+docker compose up -d --remove-orphans
 for attempt in $(seq 1 20); do
   if curl -fsS http://127.0.0.1:8020/health >/dev/null; then
     exit 0
