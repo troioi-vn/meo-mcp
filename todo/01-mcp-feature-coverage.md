@@ -1,0 +1,142 @@
+# MCP feature coverage (100% end-user surface)
+
+Status: blocked on `00-mvp-stabilization.md` (vertical slice live: `list_pets` + `pets:read`)
+
+## Goal
+
+Expose all **end-user** Meo Mai Moi capabilities through semantic MCP tools so
+agents can do anything a normal user can via the app — excluding Filament/admin.
+
+“100%” means product domains below, not a 1:1 mirror of every OpenAPI path.
+Tools stay semantic (LLM workflows), matching meo-gpt-connector design rules in
+`AGENTS.md`.
+
+## Inventory baseline
+
+| Source | Use |
+|--------|-----|
+| `../meo-mai-moi/backend/routes/api.php` + OpenAPI tags | Full API surface |
+| `../meo-gpt-connector` routers | Proven pets + health R/W shapes |
+| `../meo-mai-moi/docs/api-integration.md` | PAT / ability contract for programmatic clients |
+| This repo today | `list_pets` only (`pets:read`) |
+
+### Domains in scope
+
+Pets & profiles, photos, pet sharing/relationships, weights, medical records,
+vaccinations, microchips, habits, placement/rehoming, helpers, messaging, groups,
+finance/ledgers, notifications, resource invitations, user profile.
+
+### Out of scope
+
+Admin/Filament, ban APIs, internal connector auth endpoints as user tools,
+infrastructure/IoT unless product explicitly wants agent access later.
+
+## Phase 0 — launched, stabilization required
+
+- [x] OAuth AS + Meo `mcp-auth` bridge
+- [x] Streamable HTTP `/mcp`
+- [x] Tool: `list_pets` (read-only)
+- [x] Scope: `pets:read`
+- [ ] Complete `todo/00-mvp-stabilization.md` before expanding this surface
+
+## Capability matrix prerequisite
+
+Before implementing a phase, add its proposed tools to `docs/tools.md` with:
+
+- semantic tool name and user journey
+- read/write/destructive classification and MCP annotations
+- exact MCP scope and matching Sanctum ability
+- upstream Meo endpoint(s), input/output schema, and error mapping
+- idempotency/concurrency strategy and risk level for writes
+
+Do not use a broad scope across pets, health, messaging, placement, and finance.
+Consent copy must describe each independently meaningful permission.
+
+## Phase 1A — GPT-connector read parity
+
+Match the read side of the ChatGPT connector so agents can inspect pets and core health.
+
+### Likely tools (names indicative)
+
+- Pets: list (done), get, find/search, overview
+- Weights, vaccinations, and medical records: list/detail
+- Supporting pet types / species lookup
+
+### Work items
+
+- [ ] Map each GPT connector route to one or more MCP tools + input schemas
+- [ ] Expand `ALLOWED_SCOPES` with narrowly named read scopes in lockstep with
+      Meo Sanctum abilities / MCP connector config in `meo-mai-moi`
+- [ ] Implement Meo client methods in `meo_api.py`; keep normalization in the gateway
+- [ ] Structured error translation for validation / 403 / 404
+- [ ] Tests per tool (auth required, happy path, Meo error mapping)
+- [ ] Update server `instructions` string as capabilities grow
+- [ ] Smoke on the development MCP endpoint after deploy using the private operator runbook
+
+## Phase 1B — Low-risk GPT-connector writes
+
+- [ ] Add pet create/update and weight/vaccination/medical-record add/update only
+      after Phase 1A is stable
+- [ ] Define narrow write scopes, consent copy, matching Sanctum abilities, and
+      explicit non-destructive/destructive annotations
+- [ ] Require explicit stable target IDs; do not let fuzzy search select a write target
+- [ ] Define idempotency and duplicate-submission behavior for every create action
+- [ ] Handle concurrent updates explicitly where the Meo API exposes versions/timestamps
+- [ ] Test validation, authorization, duplicate requests, stale updates, and upstream failure
+- [ ] Run read-before-write and post-write verification through a real development client
+
+## Phase 2 — Remaining pet-care
+
+- [ ] Habits (list, entries by date, heatmap as read; create/update entries as write)
+- [ ] Pet photos (upload strategy: URL/metadata first; binary passthrough only if needed)
+- [ ] Microchips (CRUD as Meo allows)
+- [ ] Pet user relationships / leave / invitations as a separate high-impact milestone
+- [ ] Scopes + Meo abilities for each new write surface
+- [ ] Tests + development-endpoint smoke
+
+## Phase 3 — Placement, helpers, messaging
+
+- [ ] Placement requests + responses (create, confirm, reject, finalize — semantic bundles)
+- [ ] Helper profiles (public browse + own profile manage)
+- [ ] Messaging (`/api/msg/*`: chats, send, unread)
+- [ ] Treat messaging and placement as high-impact: require explicit targets,
+      idempotency where applicable, read/preview before write, and post-write verification;
+      tool-description confirmation language is not an enforcement mechanism
+- [ ] Scopes + Meo abilities + tests + development-endpoint smoke
+
+## Phase 4 — Groups, finance, notifications, profile
+
+- [ ] Groups + invitations
+- [ ] Finance/ledgers: ship read summaries first; put mutations in a separately
+      reviewed milestone with narrow scopes and audit-friendly semantics
+- [ ] Notifications inbox + mark read / actions
+- [ ] User profile (me, safe settings; no password change via MCP unless explicitly required)
+- [ ] Resource invitations as needed for share flows
+- [ ] Scopes + Meo abilities + tests + development-endpoint smoke
+- [ ] Coverage checklist against OpenAPI tags: every in-scope domain has at least
+      agent-useful read coverage; writes where product wants agent action
+
+## Meo-side work (coordinate in meo-mai-moi)
+
+When scopes expand beyond `pets:read`:
+
+- [ ] MCP connector allowlist / ability grants for new scopes
+- [ ] Consent UI (`/mcp-connect`) copy lists new scopes clearly
+- [ ] Exchange issues Sanctum tokens with matching abilities
+- [ ] Docs in meo-mai-moi if API integration contract changes
+
+## Definition of done
+
+- Every in-scope domain has documented MCP tools (catalog in `docs/` — see
+  `todo/02-documentation.md`)
+- Scopes and Meo abilities match tool annotations (`readOnlyHint` / writes)
+- Tests cover auth gate + representative success/failure per domain
+- Live `list_pets`-class smoke still passes on the development endpoint after each phase
+
+## Notes
+
+- Prefer porting semantics from meo-gpt-connector before inventing new shapes.
+- Product domain knowledge for *how to care for pets* lives in `meo-mai-moi-skill`;
+  this plan is only about exposing APIs through MCP tools.
+- Development write-safety gates live in this plan; production-specific review and
+  cutover live in `todo/04-prod-and-hardening.md`.

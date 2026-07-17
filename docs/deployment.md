@@ -1,23 +1,41 @@
 # Deployment
 
-`dev` deploys to `catarchy2` at `https://mcp-dev.meo-mai-moi.com`; `main` has no
-deployment workflow. The runtime checkout is `/opt/meo-mcp-dev`, binds only to
-`127.0.0.1:8020`, joins the external Docker network `shared-services`, and uses
-database `meo_mcp_dev` through `shared-postgres`.
+This repo ships deploy mechanics: Compose, Alembic, CI configuration, and an
+NGINX development vhost. Public service names and topology required by those
+artifacts may appear here. Private inventory belongs in the operator runbook.
 
-The server-managed `.env` contains `DATABASE_URL`, public and Meo URLs, the
-Meo connector API key/HMAC secret, and a unique 32-byte base64url AES key. Do
-not store it in Git. Back it up in Passbolt and expose CI values through OpenBao.
+Never publish IP addresses, SSH targets or usernames, checkout paths, database
+or role names, allowlisted identities, CI/repository IDs, secret-manager paths,
+or secret values. Maintainers can locate the private runbook through their
+workstation-level agent instructions; public contributors must not need it for
+local development or architecture comprehension.
 
-## Release path
+## Environments
+
+| Git branch | Role |
+|------------|------|
+| `dev` | Development: CI tests, migrates, rebuilds, and health-checks the long-lived checkout |
+| `main` | Future production target; no deploy workflow yet |
+
+## Release path (dev)
 
 1. Push a tested change to `dev`.
-2. Woodpecker tests it, SSHes to the long-lived checkout, applies Alembic migrations,
-   rebuilds Compose, and checks local and public health.
+2. CI runs tests, updates the remote checkout, applies Alembic migrations, rebuilds
+   Compose, and checks health. Operator-specific targets and recovery commands
+   live in the private runbook.
 3. Roll back by deploying the preceding `dev` SHA. Migrations are additive; do not
    use a destructive downgrade during an incident.
 
+## Configuration
+
+The server-managed `.env` holds `DATABASE_URL`, public and Meo base URLs, the Meo
+connector API key/HMAC secret, and a unique 32-byte base64url AES key. Do not
+store it in Git. Recovery and CI injection of those values are documented in
+the private operator runbook — not in this repository.
+
 ## Future production (not provisioned)
 
-Use `main`, `https://mcp.meo-mai-moi.com`, host `meo`, a distinct `meo_mcp`
-database and credentials, and select a port only after a fresh host inventory.
+Production will use `main`, a distinct public hostname, distinct database
+credentials, and a host/port chosen after a fresh inventory. Track cutover work
+in `todo/04-prod-and-hardening.md` and record private live facts only in the
+operator runbook.

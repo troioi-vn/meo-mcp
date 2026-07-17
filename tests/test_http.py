@@ -17,7 +17,10 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
     key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
     app = create_app(Settings(database_url="sqlite+aiosqlite:///ignored.db", token_encryption_key=key, meo_connector_hmac_secret="hmac", meo_connector_api_key="key"))
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="https://mcp-dev.meo-mai-moi.com") as client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url=str(app.state.settings.public_base_url),
+    ) as client:
         health = await client.get("/health")
         assert health.status_code == 200
         response = await client.post("/mcp", json={})
@@ -70,7 +73,7 @@ async def test_authenticated_mcp_initialize_starts_streamable_http_manager(tmp_p
         app.router.lifespan_context(app),
         httpx.AsyncClient(
             transport=transport,
-            base_url="https://mcp-dev.meo-mai-moi.com",
+            base_url=str(settings.public_base_url),
         ) as client,
     ):
         response = await client.post(

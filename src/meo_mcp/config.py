@@ -7,9 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://meo_mcp:change-me@shared-postgres:5432/meo_mcp_dev"
-    public_base_url: AnyHttpUrl = "https://mcp-dev.meo-mai-moi.com"
-    meo_base_url: AnyHttpUrl = "https://dev.meo-mai-moi.com"
+    database_url: str = "postgresql+asyncpg://meo_mcp:change-me@postgres.example.internal:5432/meo_mcp"
+    public_base_url: AnyHttpUrl = "https://mcp.example.com"
+    meo_base_url: AnyHttpUrl = "https://app.example.com"
     meo_connector_api_key: str = ""
     meo_connector_hmac_secret: str = ""
     token_encryption_key: str = ""

@@ -1,0 +1,78 @@
+# Production cutover and hardening
+
+Status: not started
+
+## Goal
+
+Separate ops and safety work from feature coverage so write tools and prod
+exposure do not land accidentally. Provision production when ready; harden auth,
+observability, and destructive-tool safeguards.
+
+IPs, SSH identities, checkouts, database identities, allowlisted users, CI IDs,
+and secret-store inventory belong only in the private operator runbook. Public
+service names and reusable deployment mechanics may remain in this repository.
+
+## Current state
+
+- Development environment only (see the private operator runbook)
+- `main` has no deploy workflow; production not provisioned
+- Connector / allowlist policy is managed with Meo + the private operator runbook
+- Single read tool; write surface will grow via `todo/01-mcp-feature-coverage.md`
+
+## Work items
+
+### Production provision
+
+- [ ] Inventory the production host (ports, TLS, Docker networks) before choosing bind port
+- [ ] Provision a distinct production database and credentials
+- [ ] DNS + reverse proxy for the production public hostname
+- [ ] Operator-managed `.env`; document secret recovery/CI injection in the private runbook
+- [ ] CI deploy on `main` — document mechanics in `docs/deployment.md`, private live
+      facts in the operator runbook
+- [ ] Health checks: loopback + public `/health`
+- [ ] Rollback procedure (prior SHA; additive migrations only)
+
+### Auth and allowlists
+
+- [ ] Confirm email / user allowlist policy for prod vs dev (record privately)
+- [ ] Review dynamic client registration posture for prod
+- [ ] Scope catalog review: every granted scope maps to shipped tools
+- [ ] Refresh token family / revocation smoke tests before prod cutover
+
+### Observability
+
+- [ ] Structured logs already use request IDs — verify no token leakage in prod config
+- [ ] Define minimal metrics/alerts (health fail, OAuth error rate, Meo upstream 5xx)
+- [ ] Retention and access for logs (private operator note)
+
+### Write-tool safety
+
+- [ ] Confirm every development write phase already passed the safety gates in
+      `todo/01-mcp-feature-coverage.md`; production review is an additional gate
+- [ ] Before enabling write scopes in prod: audit tool descriptions for irreversible
+      actions (delete pet, send message, finalize placement, finance mutations)
+- [ ] Prefer `readOnlyHint` / destructive annotations where FastMCP supports them
+- [ ] Require enforceable safeguards for high-impact actions: explicit targets,
+      narrow scopes, idempotency where possible, read/preview before write, and
+      post-write verification; descriptions alone are insufficient
+- [ ] Rate limits / body size already partially guarded — revisit limits under write load
+- [ ] Do not enable prod write tools without Meo ability + consent UI parity
+
+### Docs sync
+
+- [ ] Update `docs/deployment.md` when prod exists (keep public-safe)
+- [ ] Update the private operator runbook with live production facts only
+- [ ] Update AGENTS.md branch/deploy blurb when `main` deploys
+
+## Definition of done
+
+- Production public endpoint serves `/health` and OAuth-protected `/mcp`
+- Deploy path for `main` is documented (mechanics here, inventory in the private runbook)
+- Write tools in prod have explicit safety review checklist completed
+- Development remains the default agent playground unless operators opt into prod MCP
+
+## Notes
+
+- Feature coverage can proceed on the development endpoint without waiting for prod.
+- Do not treat “100% tools on dev” as automatic greenlight for prod writes.
+- Coordinate Meo production MCP connector config with meo-mai-moi release process.
