@@ -11,6 +11,8 @@ RUN useradd --system --uid 10001 mcp
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
+COPY --from=builder /app/alembic /app/alembic
+COPY --from=builder /app/alembic.ini /app/alembic.ini
 USER mcp
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1
 EXPOSE 8020
