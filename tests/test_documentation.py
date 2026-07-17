@@ -1,0 +1,59 @@
+import re
+from pathlib import Path
+
+from meo_mcp.oauth import ALLOWED_SCOPES
+
+ROOT = Path(__file__).parents[1]
+PUBLIC_DOCS = [
+    ROOT / "README.md",
+    ROOT / "AGENTS.md",
+    *sorted(
+        path for directory in (ROOT / "docs", ROOT / "todo") for path in directory.rglob("*.md")
+    ),
+]
+
+
+def test_relative_documentation_links_resolve() -> None:
+    missing: list[str] = []
+    link_pattern = re.compile(r"\]\(([^)]+)\)")
+
+    for document in PUBLIC_DOCS:
+        for raw_target in link_pattern.findall(document.read_text()):
+            target = raw_target.strip("<>").split("#", 1)[0]
+            if not target or "://" in target or target.startswith("mailto:"):
+                continue
+            if not (document.parent / target).resolve().exists():
+                missing.append(f"{document.relative_to(ROOT)} -> {target}")
+
+    assert missing == []
+
+
+def test_tool_catalog_matches_the_implemented_mvp_mapping() -> None:
+    catalog = (ROOT / "docs" / "tools.md").read_text()
+
+    assert ALLOWED_SCOPES == ["pets:read"]
+    assert "`list_pets`" in catalog
+    assert "`pets:read`" in catalog
+    assert "`read`" in catalog
+    assert "`GET /api/my-pets`" in catalog
+    assert "No write scope or write tool is currently available." in catalog
+
+
+def test_public_documentation_has_no_private_inventory_markers() -> None:
+    patterns = {
+        "workstation path": re.compile(r"/(?:home|Users)/[A-Za-z0-9._-]+/"),
+        "private IPv4 address": re.compile(
+            r"\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"
+        ),
+        "email identity": re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I),
+        "secret-store path": re.compile(r"\b(?:kv|secret|secrets)/[A-Za-z0-9._/-]+"),
+    }
+    leaks: list[str] = []
+
+    for document in PUBLIC_DOCS:
+        content = document.read_text()
+        for label, pattern in patterns.items():
+            if pattern.search(content):
+                leaks.append(f"{document.relative_to(ROOT)}: {label}")
+
+    assert leaks == []

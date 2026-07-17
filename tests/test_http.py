@@ -214,6 +214,7 @@ async def test_guard_validates_host_origin_size_and_request_ids() -> None:
         (404, "upstream_not_found", False),
         (429, "upstream_rate_limited", True),
         (503, "upstream_server_error", True),
+        (200, "upstream_malformed", True),
     ],
 )
 @pytest.mark.asyncio
@@ -259,7 +260,10 @@ async def test_list_pets_translates_upstream_errors_to_structured_tool_results(
     transport = httpx.ASGITransport(app=app)
     with respx.mock:
         respx.get("https://app.example.com/api/my-pets").mock(
-            return_value=httpx.Response(status, json={"message": "upstream detail"})
+            return_value=httpx.Response(
+                status,
+                json=[] if status == 200 else {"message": "upstream detail"},
+            )
         )
         async with (
             app.router.lifespan_context(app),

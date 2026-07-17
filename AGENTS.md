@@ -91,8 +91,10 @@ See `.env.example`: `DATABASE_URL`, `PUBLIC_BASE_URL`, `MEO_BASE_URL`,
 ## Validation
 
 ```bash
-TOKEN_ENCRYPTION_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA \
-MEO_CONNECTOR_HMAC_SECRET=test MEO_CONNECTOR_API_KEY=test uv run pytest
+uv sync --all-groups
+uv run pytest
+uv run ruff check src tests
+uv run ruff format --check src tests
 ```
 
 For live health and OAuth metadata checks, maintainers should use the private
@@ -107,6 +109,12 @@ resource metadata. After a client completes OAuth, smoke with `list_pets`.
 
 | Path | Role |
 |------|------|
+| `docs/architecture.md` | System boundary, component map, and tool-development workflow |
+| `docs/oauth.md` | OAuth discovery, consent bridge, scopes, tokens, and revocation |
+| `docs/security.md` | Security controls, credential handling, and public/private boundary |
+| `docs/errors.md` | Stable HTTP, OAuth, and MCP tool error contracts |
+| `docs/clients.md` | Client connection and OAuth acceptance guide |
+| `docs/tools.md` | Canonical capability, scope, schema, annotation, and risk matrix |
 | `docs/deployment.md` | Public-safe deploy model |
 | `todo/` | Active milestone plans; move finished ones to `todo/done/` |
 | `.agents/skills/meo-mcp/SKILL.md` | Cross-client operating skill (planned — see `todo/03-agent-skill.md`) |

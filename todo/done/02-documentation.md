@@ -1,6 +1,6 @@
 # Documentation improvements
 
-Status: not started
+Status: done
 
 ## Goal
 
@@ -23,45 +23,45 @@ repo.
 
 ### README
 
-- [ ] Expand README: what meo-mcp is, who it’s for, link to AGENTS.md, deployment,
+- [x] Expand README: what meo-mcp is, who it’s for, link to AGENTS.md, deployment,
       todo index, and (once written) architecture + skill
-- [ ] Keep README short; deep detail stays in `docs/`
+- [x] Keep README short; deep detail stays in `docs/`
 
 ### Architecture and auth
 
-- [ ] Add `docs/architecture.md`: request flow (client → OAuth → tools → Meo),
+- [x] Add `docs/architecture.md`: request flow (client → OAuth → tools → Meo),
       component map (`main` / `oauth` / `meo_api` / `security` / DB), transport choice
-- [ ] Document OAuth + Meo bridge (authorize → `/mcp-connect` → callback → exchange →
+- [x] Document OAuth + Meo bridge (authorize → `/mcp-connect` → callback → exchange →
       opaque tokens); scopes list and how they map to Sanctum abilities
-- [ ] Document error shapes and security middleware (origin allowlist, body cap,
+- [x] Document error shapes and security middleware (origin allowlist, body cap,
       DNS-rebinding protection) at a public-safe level
-- [ ] Explain the public/private boundary: public endpoints and deploy mechanics may
+- [x] Explain the public/private boundary: public endpoints and deploy mechanics may
       be documented; IPs, SSH identities, checkout paths, database identities,
       allowlisted users, CI IDs, and secret locations stay in the operator runbook
 
 ### Tool catalog
 
-- [ ] Add `docs/tools.md` (or section in architecture): each MCP tool name,
+- [x] Add `docs/tools.md` (or section in architecture): each MCP tool name,
       description, scopes, read/write, upstream Meo endpoints
-- [ ] Keep catalog updated as `todo/01-mcp-feature-coverage.md` phases land
-- [ ] Note that some clients may also surface a client-side auth helper (not
+- [x] Keep catalog updated as `todo/01-mcp-feature-coverage.md` phases land
+- [x] Note that some clients may also surface a client-side auth helper (not
       defined in this repo)
 
 ### Agent onboarding
 
-- [ ] Short “connect an MCP client” steps using placeholders, OAuth consent, and
+- [x] Short “connect an MCP client” steps using placeholders, OAuth consent, and
       `list_pets` / health; maintainers use the private runbook for live values
-- [ ] Link planned skill: `.agents/skills/meo-mcp/SKILL.md` (`todo/03-agent-skill.md`)
-- [ ] Clarify AGENTS vs skill vs meo-mai-moi-skill (gateway rules vs ops workflow vs
+- [x] Link planned skill: `.agents/skills/meo-mcp/SKILL.md` (`todo/03-agent-skill.md`)
+- [x] Clarify AGENTS vs skill vs meo-mai-moi-skill (gateway rules vs ops workflow vs
       product domain)
 
 ### Hygiene
 
-- [ ] Ensure AGENTS.md pointers stay accurate as docs are added
-- [ ] When a todo plan finishes, graduate durable sections into `docs/` and move the
+- [x] Ensure AGENTS.md pointers stay accurate as docs are added
+- [x] When a todo plan finishes, graduate durable sections into `docs/` and move the
       plan to `todo/done/`
-- [ ] No API keys, encryption keys, or other secret values in any public doc
-- [ ] Run a repository leak scan for workstation paths, IPs, SSH targets, database
+- [x] No API keys, encryption keys, or other secret values in any public doc
+- [x] Run a repository leak scan for workstation paths, IPs, SSH targets, database
       identities, allowlisted emails, CI IDs, and secret-manager paths
 
 ## Definition of done

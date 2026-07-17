@@ -46,6 +46,7 @@ test cryptographic material:
 uv sync --all-groups
 uv run pytest
 uv run ruff check src tests
+uv run ruff format --check src tests
 ```
 
 Run Alembic or the application against PostgreSQL only after setting the names
@@ -53,6 +54,11 @@ from `.env.example` to local values. Never point tests or migration experiments
 at a shared or production database.
 
 ## MVP security and rollback invariants
+
+The durable security model is documented in [`security.md`](security.md), OAuth
+lifecycles in [`oauth.md`](oauth.md), and caller-visible failures in
+[`errors.md`](errors.md). The deployment-specific invariants are summarized
+below.
 
 - Dynamic registration accepts public clients only; clients must use exact
   registered redirect URIs and S256 PKCE.

@@ -99,6 +99,8 @@ class MeoApi:
             payload = response.json()
         except ValueError:
             self._error("upstream_malformed", "Meo Mai Moi returned malformed pet data.", True, 200)
+        if not isinstance(payload, dict):
+            self._error("upstream_malformed", "Meo Mai Moi returned malformed pet data.", True, 200)
         pets = payload.get("data", payload)
         if not isinstance(pets, list):
             self._error("upstream_malformed", "Meo Mai Moi returned malformed pet data.", True, 200)
