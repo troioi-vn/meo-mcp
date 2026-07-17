@@ -8,6 +8,7 @@ import structlog
 import uvicorn
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -42,6 +43,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     engine, sessions = make_session_factory(settings.database_url)
     provider = DatabaseOAuthProvider(sessions, settings)
     api = MeoApi(sessions, settings)
+    public_host = settings.public_base_url.host
     server = FastMCP(
         "Meo Mai Moi",
         instructions="Read-only access to your Meo Mai Moi pets.",
@@ -49,6 +51,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
         auth=AuthSettings(issuer_url=settings.issuer, resource_server_url=settings.resource, required_scopes=ALLOWED_SCOPES, client_registration_options=ClientRegistrationOptions(enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=ALLOWED_SCOPES), revocation_options=RevocationOptions(enabled=True)),
         stateless_http=True,
         json_response=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=[public_host, f"{public_host}:*"],
+            allowed_origins=settings.allowed_origins,
+        ),
     )
 
     @server.tool(annotations={"readOnlyHint": True})
@@ -73,7 +80,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @asynccontextmanager
     async def lifespan(_: Starlette):
-        yield
+        async with server.session_manager.run():
+            yield
         await engine.dispose()
 
     app = Starlette(routes=[Route("/health", health), Route("/oauth/meo/callback", meo_callback), Mount("/", server.streamable_http_app())], lifespan=lifespan)

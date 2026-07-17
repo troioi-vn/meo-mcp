@@ -19,6 +19,13 @@ def is_expired(value: datetime) -> bool:
     return value <= now()
 
 
+def epoch_seconds(value: datetime) -> int:
+    """Convert database timestamps to the integer UTC epoch expected by MCP."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return int(value.timestamp())
+
+
 def token() -> str:
     return secrets.token_urlsafe(32)
 
