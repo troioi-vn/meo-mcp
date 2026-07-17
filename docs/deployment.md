@@ -33,6 +33,45 @@ connector API key/HMAC secret, and a unique 32-byte base64url AES key. Do not
 store it in Git. Recovery and CI injection of those values are documented in
 the private operator runbook — not in this repository.
 
+## Local baseline
+
+The committed `docker-compose.yml` is the deployment topology: it expects an
+operator-provided PostgreSQL database from `DATABASE_URL` and an existing
+external `shared-services` Docker network. It is not a self-contained local
+database stack. Public contributors can run all automated tests without either
+dependency because tests create isolated SQLite stores and inject non-secret
+test cryptographic material:
+
+```bash
+uv sync --all-groups
+uv run pytest
+uv run ruff check src tests
+```
+
+Run Alembic or the application against PostgreSQL only after setting the names
+from `.env.example` to local values. Never point tests or migration experiments
+at a shared or production database.
+
+## MVP security and rollback invariants
+
+- Dynamic registration accepts public clients only; clients must use exact
+  registered redirect URIs and S256 PKCE.
+- Authorization requests live for 10 minutes, authorization codes for 5
+  minutes, access tokens for 1 hour, and grants/refresh tokens for at most 90
+  days.
+- Client-facing codes and tokens are stored as SHA-256 digests. The delegated
+  Meo token is stored with AES-256-GCM authenticated encryption.
+- Refresh tokens rotate. Reusing a consumed refresh token revokes its grant,
+  access tokens, and refresh-token family locally before best-effort upstream
+  revocation.
+- OAuth token requests must carry the exact MCP resource audience. Browser
+  origins, request hosts, and the 1 MiB request-body limit are enforced before
+  application handlers.
+- Tool failures use MCP `isError` results containing stable JSON fields:
+  `code`, `message`, `retryable`, and (when applicable) `upstream_status`.
+- Rollback means running the preceding application image against the current
+  additive schema. Do not downgrade the database during incident rollback.
+
 ## Future production (not provisioned)
 
 Production will use `main`, a distinct public hostname, distinct database

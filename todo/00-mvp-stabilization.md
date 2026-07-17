@@ -1,6 +1,6 @@
 # MVP stabilization and acceptance coverage
 
-Status: not started (the vertical slice is live; acceptance coverage is incomplete)
+Status: in progress (baseline deployment verified; stabilization implementation underway)
 
 ## Goal
 

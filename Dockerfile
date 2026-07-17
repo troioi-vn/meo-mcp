@@ -18,4 +18,4 @@ COPY --from=builder /app/alembic.ini /app/alembic.ini
 USER mcp
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1
 EXPOSE 8020
-CMD ["uvicorn", "meo_mcp.main:app", "--host", "0.0.0.0", "--port", "8020", "--proxy-headers", "--no-access-log"]
+CMD ["uvicorn", "meo_mcp.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8020", "--proxy-headers", "--no-access-log"]
