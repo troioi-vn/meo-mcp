@@ -34,9 +34,9 @@ These neighboring instruction surfaces have different jobs:
 - [`AGENTS.md`](../AGENTS.md) contains always-on engineering rules for this
   gateway repository: authority boundaries, branch policy, validation, and
   documentation hygiene.
-- The planned `.agents/skills/meo-mcp/SKILL.md` is the reusable, opt-in workflow
-  for connecting, operating, and extending the gateway across supported agent
-  clients. [Plan 03](../todo/03-agent-skill.md) creates and validates it.
+- [`.agents/skills/meo-mcp/SKILL.md`](../.agents/skills/meo-mcp/SKILL.md) is the
+  reusable, opt-in workflow for connecting, operating, and extending the
+  gateway across supported agent clients.
 - The sibling `meo-mai-moi-skill` teaches agents Meo product-domain workflows.
   Product knowledge stays there instead of being copied into this gateway's
   engineering skill or documentation.

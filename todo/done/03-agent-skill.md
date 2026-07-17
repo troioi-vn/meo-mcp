@@ -1,6 +1,6 @@
 # Agent skill for meo-mcp
 
-Status: not started
+Status: done
 
 ## Goal
 
@@ -45,35 +45,35 @@ Optional later: `examples.md` for sample tool call transcripts.
 
 ### Body (concise)
 
-- [ ] When to use this skill vs AGENTS.md vs meo-mai-moi-skill
-- [ ] Connect / smoke: health and OAuth metadata with placeholders; expected 401 on
+- [x] When to use this skill vs AGENTS.md vs meo-mai-moi-skill
+- [x] Connect / smoke: health and OAuth metadata with placeholders; expected 401 on
       bare `/mcp`; Codex CLI and generic client configuration; OAuth consent; call
       `list_pets`; maintainers resolve live values through the operator runbook
-- [ ] Auth model summary (opaque MCP token → delegated Sanctum); never log tokens
-- [ ] How to discover tools; prefer read-only; do not widen scopes without explicit ask
-- [ ] How to add a tool: Meo API authority first → `meo_api.py` → `@server.tool` →
+- [x] Auth model summary (opaque MCP token → delegated Sanctum); never log tokens
+- [x] How to discover tools; prefer read-only; do not widen scopes without explicit ask
+- [x] How to add a tool: Meo API authority first → `meo_api.py` → `@server.tool` →
       scopes → tests → update docs/catalog
-- [ ] Secrets: never commit `.env`; live secret *locations* only in the private operator runbook
-- [ ] Link to `reference.md` and `docs/deployment.md`; mention the private operator
+- [x] Secrets: never commit `.env`; live secret *locations* only in the private operator runbook
+- [x] Link to `reference.md` and `docs/deployment.md`; mention the private operator
       runbook without embedding a workstation path
 
 ### reference.md
 
-- [ ] Current tool list (start with `list_pets`)
-- [ ] Scope list and meaning
-- [ ] Public-safe curl / JSON-RPC style examples for initialize / tools/list / tools/call
+- [x] Current tool list (start with `list_pets`)
+- [x] Scope list and meaning
+- [x] Public-safe curl / JSON-RPC style examples for initialize / tools/list / tools/call
       (use environment placeholders; maintainers resolve live values privately)
-- [ ] Common failure modes (401 invalid_token, invalid_origin, Meo 403/404 mapping)
+- [x] Common failure modes (401 invalid_token, invalid_origin, Meo 403/404 mapping)
 
 ## Work items
 
-- [ ] Create `.agents/skills/meo-mcp/SKILL.md` + `reference.md`
-- [ ] Ensure `AGENTS.md` pointer matches the real path (already stubbed)
-- [ ] Align with `todo/02-documentation.md` so tool catalog isn’t duplicated awkwardly
+- [x] Create `.agents/skills/meo-mcp/SKILL.md` + `reference.md`
+- [x] Ensure `AGENTS.md` pointer matches the real path (already stubbed)
+- [x] Align with `todo/02-documentation.md` so tool catalog isn’t duplicated awkwardly
       (skill reference can summarize; `docs/tools.md` is canonical once written)
-- [ ] Validate the skill with the repository's available skill-authoring/validation
+- [x] Validate the skill with the repository's available skill-authoring/validation
       tooling, then smoke it in fresh Codex and Cursor turns mentioning “meo-mcp OAuth”
-- [ ] Keep under 500 lines; progressive disclosure only one level deep
+- [x] Keep under 500 lines; progressive disclosure only one level deep
 
 ## Out of scope
 

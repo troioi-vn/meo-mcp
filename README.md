@@ -23,9 +23,9 @@ Meo `read` ability.
 | [Deployment](docs/deployment.md) | Public-safe local and development release mechanics |
 
 Repository-specific agent rules are in [AGENTS.md](AGENTS.md), and active work
-is sequenced in [todo/README.md](todo/README.md). The reusable gateway workflow
-skill is planned in [Plan 03](todo/03-agent-skill.md); its canonical location
-will be `.agents/skills/meo-mcp/SKILL.md`.
+is sequenced in [todo/README.md](todo/README.md). Use the reusable
+[Meo MCP gateway skill](.agents/skills/meo-mcp/SKILL.md) for on-demand connect,
+smoke, diagnosis, deployment, and tool-development workflows.
 
 ## Local validation
 

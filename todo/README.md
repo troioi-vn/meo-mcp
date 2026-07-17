@@ -19,7 +19,6 @@ the private operator runbook only.
 | Plan | Focus |
 |------|--------|
 | [01-mcp-feature-coverage.md](01-mcp-feature-coverage.md) | Full end-user MCP tool/scope coverage |
-| [03-agent-skill.md](03-agent-skill.md) | Cursor skill for operating/developing this gateway |
 | [04-prod-and-hardening.md](04-prod-and-hardening.md) | Prod cutover, auth policy, observability, write safety |
 
 ## Execution order
@@ -42,3 +41,4 @@ verify the development client flow before continuing.
 |------|-------|
 | [00-mvp-stabilization.md](done/00-mvp-stabilization.md) | OAuth, transport, security, and client acceptance foundation |
 | [02-documentation.md](done/02-documentation.md) | Self-contained architecture, OAuth, security, errors, clients, and tool catalog |
+| [03-agent-skill.md](done/03-agent-skill.md) | Cross-client connect, smoke, diagnosis, deploy, and tool-development workflow |

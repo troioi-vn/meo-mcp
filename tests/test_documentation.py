@@ -8,7 +8,9 @@ PUBLIC_DOCS = [
     ROOT / "README.md",
     ROOT / "AGENTS.md",
     *sorted(
-        path for directory in (ROOT / "docs", ROOT / "todo") for path in directory.rglob("*.md")
+        path
+        for directory in (ROOT / "docs", ROOT / "todo", ROOT / ".agents" / "skills")
+        for path in directory.rglob("*.md")
     ),
 ]
 
@@ -37,6 +39,21 @@ def test_tool_catalog_matches_the_implemented_mvp_mapping() -> None:
     assert "`read`" in catalog
     assert "`GET /api/my-pets`" in catalog
     assert "No write scope or write tool is currently available." in catalog
+
+
+def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:
+    skill_dir = ROOT / ".agents" / "skills" / "meo-mcp"
+    skill = (skill_dir / "SKILL.md").read_text()
+    reference = (skill_dir / "reference.md").read_text()
+    interface = (skill_dir / "agents" / "openai.yaml").read_text()
+
+    assert len(skill.splitlines()) < 500
+    assert skill.startswith("---\nname: meo-mcp\ndescription:")
+    for trigger in ("Meo MCP", "meo-mcp", "Streamable HTTP", "OAuth", "list_pets", "pets:read"):
+        assert trigger in skill.split("---", 2)[1]
+    for mapping in ("`list_pets`", "`pets:read`", "`read`", "`GET /api/my-pets`"):
+        assert mapping in reference
+    assert 'default_prompt: "Use $meo-mcp ' in interface
 
 
 def test_public_documentation_has_no_private_inventory_markers() -> None:

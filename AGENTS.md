@@ -117,5 +117,5 @@ resource metadata. After a client completes OAuth, smoke with `list_pets`.
 | `docs/tools.md` | Canonical capability, scope, schema, annotation, and risk matrix |
 | `docs/deployment.md` | Public-safe deploy model |
 | `todo/` | Active milestone plans; move finished ones to `todo/done/` |
-| `.agents/skills/meo-mcp/SKILL.md` | Cross-client operating skill (planned — see `todo/03-agent-skill.md`) |
+| `.agents/skills/meo-mcp/SKILL.md` | Cross-client connect, smoke, diagnosis, deploy, and tool-development workflow |
 | private operator runbook | Live hosts, endpoints, secrets, CI; intentionally outside this repo |
