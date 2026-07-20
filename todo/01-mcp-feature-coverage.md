@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phase 1A complete; Phase 1B is next)
+Status: in progress (Phases 1A and 1B complete; Phase 2 is next)
 
 ## Goal
 
@@ -88,7 +88,15 @@ overview calls. Only aggregate counts and status flags were retained.
 - [x] Define idempotency and duplicate-submission behavior for every create action
 - [x] Handle concurrent updates explicitly where the Meo API exposes versions/timestamps
 - [x] Test validation, authorization, duplicate requests, stale updates, and upstream failure
-- [ ] Run read-before-write and post-write verification through a real development client
+- [x] Run read-before-write and post-write verification through a real development client
+
+Development acceptance on 2026-07-20 used a fresh Codex four-scope grant and
+discovered all 19 tools. It verified exact create replay, changed-payload
+idempotency conflict, duplicate-candidate handling, optimistic-concurrency
+conflict, and read-before/post-write verification for pet, weight, vaccination,
+and medical-record creates and updates. Only stable acceptance IDs and status
+flags were retained. The live exercise also found and closed a bearer-PAT
+authentication gap ahead of Meo's idempotency middleware.
 
 ## Phase 2 — Remaining pet-care
 
