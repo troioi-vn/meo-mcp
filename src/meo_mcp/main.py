@@ -956,6 +956,203 @@ def create_app(settings: Settings | None = None) -> Starlette:
         return await call(api.list_group_invitations, group_id)
 
     @server.tool(annotations=read_annotations)
+    async def preview_group_invitation(invitation: str) -> CallToolResult:
+        """Preview a group bearer invitation without placing its token in an upstream URL."""
+        return await call(api.preview_group_invitation, invitation)
+
+    @server.tool(annotations=create_annotations)
+    async def create_group(
+        name: str,
+        pet_ids: list[int],
+        idempotency_key: str,
+        allow_duplicate: bool = False,
+    ) -> CallToolResult:
+        """Create and verify a named group with explicit initial pet IDs."""
+        return await call(api.create_group, name, pet_ids, idempotency_key, allow_duplicate)
+
+    @server.tool(annotations=update_annotations)
+    async def update_group(
+        group_id: int, base_version: str, name: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Rename one exact group from the version returned by get_group_overview."""
+        return await call(api.update_group, group_id, base_version, name, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def delete_group(
+        group_id: int,
+        base_version: str,
+        expected_group_name: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete a versioned group whose exact name matches."""
+        return await call(
+            api.delete_group,
+            group_id,
+            base_version,
+            expected_group_name,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def add_group_member(
+        group_id: int,
+        user_id: int,
+        role: Literal["admin", "member"],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Grant one freshly suggested stable user an explicit group role."""
+        return await call(
+            api.add_group_member, group_id, user_id, role, base_version, idempotency_key
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_group_member_role(
+        group_id: int,
+        user_id: int,
+        role: Literal["admin", "member"],
+        expected_current_role: Literal["admin", "member"],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Change one exact member role after matching its fresh current role."""
+        return await call(
+            api.update_group_member_role,
+            group_id,
+            user_id,
+            role,
+            expected_current_role,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def remove_group_member(
+        group_id: int,
+        user_id: int,
+        expected_current_role: Literal["admin", "member"],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Remove one exact member after matching its fresh current role."""
+        return await call(
+            api.remove_group_member,
+            group_id,
+            user_id,
+            expected_current_role,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def leave_group(
+        group_id: int,
+        expected_caller_role: Literal["admin", "member"],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Leave one exact group after matching the caller's fresh role."""
+        return await call(
+            api.leave_group,
+            group_id,
+            expected_caller_role,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def add_group_pets(
+        group_id: int,
+        pet_ids: list[int],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Assign explicit freshly readable pets to one versioned group."""
+        return await call(api.add_group_pets, group_id, pet_ids, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def remove_group_pet(
+        group_id: int,
+        pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Remove one exact named pet from a versioned group."""
+        return await call(
+            api.remove_group_pet,
+            group_id,
+            pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def create_group_invitation(
+        group_id: int,
+        role: Literal["admin", "member"],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Create and verify one role-specific bearer invitation for an exact group."""
+        return await call(
+            api.create_group_invitation, group_id, role, base_version, idempotency_key
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def revoke_group_invitation(
+        group_id: int,
+        invitation_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Revoke one exact pending group invitation and verify its absence."""
+        return await call(
+            api.revoke_group_invitation,
+            group_id,
+            invitation_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def accept_group_invitation(
+        invitation: str,
+        expected_group_name: str,
+        expected_role: Literal["admin", "member"],
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Accept only after an exact fresh group/role invitation preview."""
+        return await call(
+            api.accept_group_invitation,
+            invitation,
+            expected_group_name,
+            expected_role,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def decline_group_invitation(
+        invitation: str,
+        expected_group_name: str,
+        expected_role: Literal["admin", "member"],
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Decline only after an exact fresh group/role invitation preview."""
+        return await call(
+            api.decline_group_invitation,
+            invitation,
+            expected_group_name,
+            expected_role,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=read_annotations)
     async def list_currencies() -> CallToolResult:
         """List supported finance currency codes, symbols, and minor-unit precision."""
         return await call(api.list_currencies)

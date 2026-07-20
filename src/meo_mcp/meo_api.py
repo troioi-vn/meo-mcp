@@ -1444,6 +1444,355 @@ class MeoApi:
         payload = await self._get(delegated, f"/api/groups/{group_id}/invitations")
         return {"invitations": [self._resource_invitation(item) for item in self._items(payload)]}
 
+    async def preview_group_invitation(self, invitation: str) -> dict[str, Any]:
+        token = self._invitation_token(invitation)
+        delegated = await self._delegated_token("groups:read")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/mcp/group-invitations/preview",
+            json_data={"token": token},
+        )
+        return {"invitation": self._group_invitation_preview(self._object(payload))}
+
+    async def create_group(
+        self,
+        name: str,
+        pet_ids: list[int],
+        idempotency_key: str,
+        allow_duplicate: bool = False,
+    ) -> dict[str, Any]:
+        name = self._required_text(name, "name", 255)
+        pets = self._positive_id_list(pet_ids, "pet_ids", allow_empty=True)
+        key = self._idempotency_key(idempotency_key)
+        existing = (await self.list_groups())["groups"]
+        duplicates = [
+            item for item in existing if str(item.get("name", "")).casefold() == name.casefold()
+        ]
+        if duplicates and not allow_duplicate:
+            self._error(
+                "duplicate_candidate",
+                "A group with the same normalized name already exists; inspect its stable ID or explicitly allow a distinct duplicate.",
+                False,
+                extra={
+                    "candidates": [
+                        {"group_id": item.get("group_id"), "name": item.get("name")}
+                        for item in duplicates
+                    ]
+                },
+            )
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            "/api/groups",
+            json_data={"name": name, "pet_ids": pets},
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        group_id = self._response_id(created)
+        verified = await self._verify(self.get_group_overview, group_id)
+        return {"group": verified["group"], "verified": True}
+
+    async def update_group(
+        self,
+        group_id: int,
+        base_version: str,
+        name: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        version = self._version(base_version)
+        name = self._required_text(name, "name", 255)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_group_overview(group_id))["group"]
+        self._require_version_available(current)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/groups/{group_id}",
+            json_data={"name": name, "base_version": version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_group_overview, group_id)
+        if verified["group"].get("name") != name:
+            self._verification_error("The group rename could not be verified.")
+        return {"group": verified["group"], "verified": True}
+
+    async def delete_group(
+        self,
+        group_id: int,
+        base_version: str,
+        expected_group_name: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        version = self._version(base_version)
+        expected = self._required_text(expected_group_name, "expected_group_name", 255)
+        key = self._idempotency_key(idempotency_key)
+        try:
+            current = (await self.get_group_overview(group_id))["group"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            if current.get("name") != expected:
+                self._error("target_mismatch", "The group name does not match.", False)
+            self._require_version_available(current)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/groups/{group_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        groups = (await self._verify(self.list_groups))["groups"]
+        if any(item.get("group_id") == group_id for item in groups):
+            self._verification_error("The deleted group is still visible.")
+        return {"group_id": group_id, "deleted": True, "verified": True}
+
+    async def add_group_member(
+        self,
+        group_id: int,
+        user_id: int,
+        role: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._group_member_change(
+            group_id, user_id, role, None, base_version, idempotency_key, "add"
+        )
+
+    async def update_group_member_role(
+        self,
+        group_id: int,
+        user_id: int,
+        role: str,
+        expected_current_role: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._group_member_change(
+            group_id,
+            user_id,
+            role,
+            expected_current_role,
+            base_version,
+            idempotency_key,
+            "update",
+        )
+
+    async def remove_group_member(
+        self,
+        group_id: int,
+        user_id: int,
+        expected_current_role: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._group_member_change(
+            group_id,
+            user_id,
+            None,
+            expected_current_role,
+            base_version,
+            idempotency_key,
+            "remove",
+        )
+
+    async def leave_group(
+        self,
+        group_id: int,
+        expected_caller_role: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        role = self._group_role(expected_caller_role)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_group_overview(group_id))["group"]
+        if current.get("viewer_role") != role:
+            self._error("target_mismatch", "The caller's fresh group role does not match.", False)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/groups/{group_id}/leave",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        groups = (await self._verify(self.list_groups))["groups"]
+        if any(item.get("group_id") == group_id for item in groups):
+            self._verification_error("The caller still has group access.")
+        return {"group_id": group_id, "left": True, "verified": True}
+
+    async def add_group_pets(
+        self,
+        group_id: int,
+        pet_ids: list[int],
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        pets = self._positive_id_list(pet_ids, "pet_ids")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_group_overview(group_id)
+        owned_ids = {item.get("id") for item in (await self.list_pets())["pets"]}
+        if not set(pets) <= owned_ids:
+            self._error("target_mismatch", "Every pet_id must be in the fresh pet list.", False)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/groups/{group_id}/pets",
+            json_data={"pet_ids": pets, "base_version": version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_group_overview, group_id)
+        present = {item.get("pet_id") for item in verified["group"].get("pets", [])}
+        if not set(pets) <= present:
+            self._verification_error("The group pet assignments could not be verified.")
+        return {"group": verified["group"], "verified": True}
+
+    async def remove_group_pet(
+        self,
+        group_id: int,
+        pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        self._positive(pet_id, "pet_id")
+        expected = self._required_text(expected_pet_name, "expected_pet_name", 255)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_group_overview(group_id))["group"]
+        target = next(
+            (item for item in current.get("pets", []) if item.get("pet_id") == pet_id), None
+        )
+        if target is not None and target.get("pet_name") != expected:
+            self._error("target_mismatch", "The group pet name does not match.", False)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/groups/{group_id}/pets/{pet_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_group_overview, group_id)
+        if any(item.get("pet_id") == pet_id for item in verified["group"].get("pets", [])):
+            self._verification_error("The removed pet is still assigned to the group.")
+        return {"group": verified["group"], "pet_id": pet_id, "removed": True, "verified": True}
+
+    async def create_group_invitation(
+        self,
+        group_id: int,
+        role: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        role = self._group_role(role)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_group_overview(group_id)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/groups/{group_id}/invitations",
+                json_data={"role": role, "base_version": version},
+                idempotency_key=key,
+                expected_statuses={200, 201},
+            )
+        )
+        raw = created.get("invitation")
+        if not isinstance(raw, dict):
+            self._verification_error("Meo did not return a stable group invitation.")
+        invitation = self._resource_invitation(raw)
+        invitations = (await self._verify(self.list_group_invitations, group_id))["invitations"]
+        verified = next(
+            (
+                item
+                for item in invitations
+                if item.get("invitation_id") == invitation.get("invitation_id")
+            ),
+            None,
+        )
+        if verified is None:
+            self._verification_error("The created group invitation could not be verified.")
+        return {"invitation": verified, "verified": True}
+
+    async def revoke_group_invitation(
+        self,
+        group_id: int,
+        invitation_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        self._positive(invitation_id, "invitation_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.list_group_invitations(group_id)
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/groups/{group_id}/invitations/{invitation_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        after = (await self._verify(self.list_group_invitations, group_id))["invitations"]
+        if any(item.get("invitation_id") == invitation_id for item in after):
+            self._verification_error("The revoked group invitation is still pending.")
+        return {"invitation_id": invitation_id, "revoked": True, "verified": True}
+
+    async def accept_group_invitation(
+        self,
+        invitation: str,
+        expected_group_name: str,
+        expected_role: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._consume_group_invitation(
+            invitation,
+            expected_group_name,
+            expected_role,
+            invitation_base_version,
+            idempotency_key,
+            "accept",
+        )
+
+    async def decline_group_invitation(
+        self,
+        invitation: str,
+        expected_group_name: str,
+        expected_role: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._consume_group_invitation(
+            invitation,
+            expected_group_name,
+            expected_role,
+            invitation_base_version,
+            idempotency_key,
+            "decline",
+        )
+
     async def list_currencies(self) -> dict[str, Any]:
         delegated = await self._delegated_token("finance:read")
         payload = await self._get(delegated, "/api/currencies")
@@ -2511,6 +2860,129 @@ class MeoApi:
             self._verification_error("The declined invitation is still valid.")
         return {"declined": True, "verified": True}
 
+    async def _consume_group_invitation(
+        self,
+        invitation: str,
+        expected_group_name: str,
+        expected_role: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+        action: str,
+    ) -> dict[str, Any]:
+        token = self._invitation_token(invitation)
+        expected_name = self._required_text(expected_group_name, "expected_group_name", 255)
+        role = self._group_role(expected_role)
+        version = self._version(invitation_base_version)
+        key = self._idempotency_key(idempotency_key)
+        preview = (await self.preview_group_invitation(token))["invitation"]
+        if preview.get("group_name") != expected_name or preview.get("role") != role:
+            self._error(
+                "invitation_mismatch",
+                "The fresh invitation preview does not match the expected group and role.",
+                False,
+            )
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        result = await self._request(
+            delegated,
+            "POST",
+            f"/api/mcp/group-invitations/{action}",
+            json_data={"token": token, "base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        if action == "accept":
+            item = self._object(result)
+            group_id = item.get("group_id")
+            self._positive(group_id, "group_id")
+            verified = await self._verify(self.get_group_overview, group_id)
+            if verified["group"].get("viewer_role") != role:
+                self._verification_error("The accepted group role could not be verified.")
+            return {"group": verified["group"], "accepted": True, "verified": True}
+        after = (await self.preview_group_invitation(token))["invitation"]
+        if after.get("is_valid"):
+            self._verification_error("The declined group invitation is still valid.")
+        return {"declined": True, "verified": True}
+
+    async def _group_member_change(
+        self,
+        group_id: int,
+        user_id: int,
+        role: str | None,
+        expected_current_role: str | None,
+        base_version: str,
+        idempotency_key: str,
+        action: str,
+    ) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        self._positive(user_id, "user_id")
+        normalized_role = self._group_role(role) if role is not None else None
+        expected = (
+            self._group_role(expected_current_role) if expected_current_role is not None else None
+        )
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_group_overview(group_id))["group"]
+        member = next(
+            (item for item in current.get("members", []) if item.get("user_id") == user_id),
+            None,
+        )
+        if action == "add":
+            if member is None:
+                suggestions = (await self.list_group_member_suggestions(group_id))["suggestions"]
+                if user_id not in {item.get("user_id") for item in suggestions}:
+                    self._error(
+                        "target_mismatch",
+                        "user_id is not present in the fresh group suggestions.",
+                        False,
+                    )
+        elif member is None or member.get("role") != expected:
+            self._error(
+                "target_mismatch",
+                "The member's fresh role does not match the expected role.",
+                False,
+            )
+        method = {"add": "POST", "update": "PUT", "remove": "DELETE"}[action]
+        path = (
+            f"/api/groups/{group_id}/members"
+            if action == "add"
+            else f"/api/groups/{group_id}/members/{user_id}"
+        )
+        payload: dict[str, Any] = {"base_version": version}
+        if normalized_role is not None:
+            payload["role"] = normalized_role
+        if action == "add":
+            payload["user_id"] = user_id
+        delegated = await self._delegated_token("groups:read", "groups:write")
+        await self._request(
+            delegated,
+            method,
+            path,
+            json_data=payload,
+            idempotency_key=key,
+            expected_statuses={200, 201, 204},
+        )
+        verified = await self._verify(self.get_group_overview, group_id)
+        after = next(
+            (
+                item
+                for item in verified["group"].get("members", [])
+                if item.get("user_id") == user_id
+            ),
+            None,
+        )
+        if action == "remove":
+            if after is not None:
+                self._verification_error("The removed group member is still active.")
+            return {
+                "group": verified["group"],
+                "user_id": user_id,
+                "removed": True,
+                "verified": True,
+            }
+        if after is None or after.get("role") != normalized_role:
+            self._verification_error("The group member role could not be verified.")
+        return {"group": verified["group"], "member": after, "verified": True}
+
     async def _habit_lifecycle(
         self,
         habit_id: int,
@@ -3205,6 +3677,23 @@ class MeoApi:
             "inviter_name": inviter.get("name"),
             "pet_name": target.get("name"),
             "relationship_type": target.get("role"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _group_invitation_preview(item: dict[str, Any]) -> dict[str, Any]:
+        inviter = item.get("inviter") if isinstance(item.get("inviter"), dict) else {}
+        target = item.get("target") if isinstance(item.get("target"), dict) else {}
+        return {
+            "status": item.get("status"),
+            "expires_at": item.get("expires_at"),
+            "is_valid": bool(item.get("is_valid")),
+            "is_authenticated": bool(item.get("is_authenticated")),
+            "is_self_invitation": bool(item.get("is_self_invitation")),
+            "inviter_name": inviter.get("name"),
+            "group_id": target.get("group_id"),
+            "group_name": target.get("name"),
+            "role": target.get("role"),
             "version": item.get("updated_at", item.get("version")),
         }
 
@@ -4176,6 +4665,31 @@ class MeoApi:
                 "expected_relationship_types must be unique supported roles.",
                 False,
             )
+        return normalized
+
+    @classmethod
+    def _group_role(cls, value: str) -> str:
+        normalized = cls._required_text(value, "role", 16).lower()
+        if normalized not in {"admin", "member"}:
+            cls._error("validation_error", "role must be admin or member.", False)
+        return normalized
+
+    @classmethod
+    def _positive_id_list(
+        cls, values: list[int], field: str, *, allow_empty: bool = False
+    ) -> list[int]:
+        if not isinstance(values, list) or (not values and not allow_empty):
+            cls._error(
+                "validation_error",
+                f"{field} must contain at least one positive integer.",
+                False,
+            )
+        normalized: list[int] = []
+        for value in values:
+            cls._positive(value, field)
+            normalized.append(value)
+        if len(set(normalized)) != len(normalized):
+            cls._error("validation_error", f"{field} must not contain duplicates.", False)
         return normalized
 
     def _invitation_token(self, value: str) -> str:

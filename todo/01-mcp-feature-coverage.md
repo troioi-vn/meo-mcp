@@ -166,14 +166,18 @@ deployed the tool surface and matching error translation.
 - [x] Phase 4A: finance summaries, configuration, and transaction reads before
       any finance mutation
 - [x] Phase 4A: Meo abilities, tests, deployment, and real-client smoke
-- [ ] Phase 4B: separately reviewed group and resource-invitation writes
-- [ ] Phase 4B: separately reviewed finance/ledger writes with narrow scopes and
-      audit-friendly semantics
-- [ ] Phase 4B: notification mark-read/actions/preferences and safe profile
-      writes; no password change or account deletion via MCP
-- [ ] Phase 4B: account-invitation create/revoke only if the stable target and
-      bearer-material contract can be enforced safely
-- [ ] Phase 4B: scopes, Meo abilities, tests, deployment, and real-client smoke
+- [ ] Phase 4B1: separately reviewed group and group-invitation writes, with a
+      tested/deployed/accepted checkpoint before finance
+- [ ] Phase 4B2: separately reviewed finance/ledger and ledger-invitation writes
+      with narrow scopes and audit-friendly semantics, followed by its own
+      tested/deployed/accepted checkpoint
+- [ ] Phase 4B3: notification mark-read/preferences, safe profile and owner-
+      weight writes, and account-invitation create/revoke, followed by its own
+      tested/deployed/accepted checkpoint
+- [ ] Phase 4B3: keep password change and account deletion out of MCP; expose no
+      notification action unless the registered handler is an end-user action
+- [ ] Phase 4B: all five write scopes, Meo abilities, tests, deployments, and
+      real-client smokes complete
 - [ ] Coverage checklist against OpenAPI tags: every in-scope domain has at least
       agent-useful read coverage; writes where product wants agent action
 

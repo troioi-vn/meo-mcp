@@ -51,6 +51,7 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
         "messages:read",
         "messages:write",
         "groups:read",
+        "groups:write",
         "finance:read",
         "notifications:read",
         "profile:read",

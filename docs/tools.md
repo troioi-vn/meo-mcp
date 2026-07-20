@@ -119,6 +119,20 @@ part of the end-user tool surface.
 | `get_my_profile` | Live | Read a narrowed self profile, locale, avatar, storage, and account state | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me` | Read | Critical; personal identity and account metadata |
 | `list_owner_weights` | Live | Page the caller's own body-weight history | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me/owner-weights` | Read | Critical; personal health data |
 | `get_account_invitation_summary` | Live | Read sent onboarding invitations and lifecycle totals | `invitations:read` | `invitations:read` (legacy PAT: `read`) | `GET /api/invitations`; `GET /api/invitations/stats` | Read/aggregate | High; bearer codes and recipient identity |
+| `create_group` | Proposed (Phase 4B1) | Create a named group with an explicit initial pet set | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | duplicate preview; `POST /api/groups`; detail verification | Create | High; creates shared access boundary |
+| `update_group` | Proposed (Phase 4B1) | Rename one exact group from its current version | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `update`) | detail preview; `PUT /api/groups/{group_id}`; detail verification | Update | High; shared identity change |
+| `delete_group` | Proposed (Phase 4B1) | Permanently delete one exact group after membership/pet preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/groups/{group_id}`; absence verification | Delete | Critical; destroys group and sharing state |
+| `add_group_member` | Proposed (Phase 4B1) | Add one exact suggested user with an explicit role | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | detail/suggestion preview; `POST /api/groups/{group_id}/members`; detail verification | Create | Critical; grants access |
+| `update_group_member_role` | Proposed (Phase 4B1) | Change one exact member's role from a versioned group preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `update`) | detail preview; `PUT /api/groups/{group_id}/members/{user_id}`; detail verification | Update | Critical; changes administrative authority |
+| `remove_group_member` | Proposed (Phase 4B1) | Remove one exact member after role preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/groups/{group_id}/members/{user_id}`; detail verification | Delete | Critical; revokes access |
+| `leave_group` | Proposed (Phase 4B1) | Leave one exact group after caller-role and last-admin preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `POST /api/groups/{group_id}/leave`; absence verification | Delete | Critical; ends caller access |
+| `add_group_pets` | Proposed (Phase 4B1) | Add an explicit non-empty set of manageable pet IDs | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | detail/pet preview; `POST /api/groups/{group_id}/pets`; detail verification | Create | Critical; shares pet visibility with group |
+| `remove_group_pet` | Proposed (Phase 4B1) | Remove one exact pet from a versioned group | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/groups/{group_id}/pets/{pet_id}`; detail verification | Delete | Critical; changes shared pet access |
+| `create_group_invitation` | Proposed (Phase 4B1) | Create a bearer invitation for one exact group and role | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | group/invitation preview; `POST /api/groups/{group_id}/invitations`; list verification | Create | Critical; emits bearer access material |
+| `revoke_group_invitation` | Proposed (Phase 4B1) | Revoke one exact pending group invitation | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | invitation preview; `DELETE /api/groups/{group_id}/invitations/{invitation_id}`; absence verification | Delete | Critical; invalidates bearer material |
+| `preview_group_invitation` | Proposed (Phase 4B1) | Resolve bearer material in a request body before accept/decline | `groups:read` | `groups:read` (legacy PAT: `read`) | `POST /api/mcp/group-invitations/preview` | Read | Critical; consumes bearer material without URL leakage |
+| `accept_group_invitation` | Proposed (Phase 4B1) | Accept an exact previewed group invitation | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | body-token preview; `POST /api/mcp/group-invitations/accept`; group verification | Create | Critical; grants caller group access |
+| `decline_group_invitation` | Proposed (Phase 4B1) | Decline an exact previewed group invitation | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `update`) | body-token preview; `POST /api/mcp/group-invitations/decline`; inactive verification | Update | Critical; permanently consumes invitation |
 
 ## Scope model
 
@@ -141,6 +155,7 @@ part of the end-user tool surface.
 | `messages:read` | View the caller's chats, private messages, and unread counts | `messages:read` | Messaging reads without changing read receipts |
 | `messages:write` | Open placement chats, send/remove messages, mark read, and leave chats | `messages:write` | Messaging mutations; paired with `messages:read` |
 | `groups:read` | View groups, members, assigned pets, suggestions, and pending invitations available to the caller | `groups:read` | Group reads only |
+| `groups:write` | Create and manage groups, memberships, assigned pets, and group invitations | `groups:write` | Group mutations only; tools pair it with `groups:read` |
 | `finance:read` | View accessible ledgers, transactions, totals, configuration, pets, members, suggestions, and pending invitations | `finance:read` | Finance reads only |
 | `notifications:read` | View the caller's notification inbox, unread counts, available actions, and delivery preferences | `notifications:read` | Notification reads only |
 | `profile:read` | View a narrowed self profile and the caller's own weight history | `profile:read` | Self-profile reads only |
@@ -649,6 +664,46 @@ Receipt binaries are not returned in Phase 4A: transaction reads expose the
 authoritative `has_receipt` flag. A future receipt tool requires a separately
 designed bounded MCP content contract rather than leaking an authenticated API
 URL or embedding an unbounded 10 MiB file.
+
+## Phase 4B1 group write contract
+
+Phase 4B1 introduces only `groups:write`, always paired with `groups:read` by
+mutation tools. Every mutation carries an idempotency key. Every operation
+against an existing group also carries the exact group `base_version` returned
+by `get_group_overview`; Meo rejects stale versions before changing membership,
+pet assignment, group identity, or invitation state.
+
+- `create_group(name, pet_ids, idempotency_key)` normalizes a required name and
+  distinct positive pet IDs. The gateway reads existing groups first and
+  returns stable duplicate candidates instead of guessing whether an equal
+  name is intentional. Exact retries return the original group.
+- `update_group(group_id, base_version, name, idempotency_key)` and
+  `delete_group(group_id, base_version, expected_group_name, idempotency_key)`
+  read the complete target first. Delete additionally compares the expected
+  name and returns the member/pet counts in the previewed result; confirmation
+  prose is not used as an enforcement mechanism.
+- Membership tools require explicit `group_id` and `user_id`.
+  `add_group_member` also requires an exact `admin | member` role and proves the
+  user is still in the authority's suggestion set. Role update and removal
+  require `expected_current_role`; last-admin rules remain authoritative in
+  Meo. `leave_group` compares `expected_caller_role` before ending access.
+- Pet assignment tools accept only explicit positive pet IDs. Addition checks
+  every target through the caller's pet read boundary, uses one atomic request,
+  and treats already-assigned pets as an exact replay only when the full intent
+  matches. Removal requires `expected_pet_name` from the versioned group read.
+- Manager invitation create/revoke uses explicit group, role, invitation ID,
+  and group version. Create retries return the same invitation; revoke retries
+  verify absence. Invitation tokens and URLs are bearer material and may appear
+  only in successful authorized tool content, never logs or errors.
+- Recipient preview/accept/decline sends the 64-character bearer token in the
+  request body to type-specific MCP authority endpoints. Accept/decline require
+  the invitation `base_version` from preview. The group endpoints reject pet or
+  ledger invitations so `groups:write` cannot cross domains.
+
+Successful mutations perform a post-write detail/list/absence read. Stable
+errors include the shared validation, idempotency, concurrency, authorization,
+inactive-invitation, and post-write-verification codes. Deletion and access
+changes use destructive annotations; create/update operations do not.
 
 ## Errors
 
