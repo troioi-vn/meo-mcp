@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 4B3 complete; Phase 5A is next)
+Status: in progress (Phases 1A through 5A complete; Phase 5B is next)
 
 ## Goal
 
@@ -238,9 +238,9 @@ the earlier risk-sequenced phases intentionally had not yet exposed. Complete
 these as separate checkpoints; do not treat route existence alone as a reason
 to expose browser plumbing or account-recovery surfaces.
 
-- [ ] Phase 5A: pet category discovery/assignment/creation, pet lifecycle status
+- [x] Phase 5A: pet category discovery/assignment/creation, pet lifecycle status
       and deletion, helper city-option creation, and self-locale update
-- [ ] Phase 5A: authority abilities, stable target/version enforcement,
+- [x] Phase 5A: authority abilities, stable target/version enforcement,
       duplicate handling, tests, deployment, and real-client smoke
 - [ ] Phase 5B: weight, vaccination, and medical-record deletion; vaccination
       renewal; guarded vaccination/medical photo import and deletion
@@ -255,6 +255,17 @@ to expose browser plumbing or account-recovery surfaces.
       authentication, credential-minting, recovery, verification, and account-
       destruction surfaces
 - [ ] Final route/OpenAPI/frontend audit has no unexplained normal-user gap
+
+Phase 5A acceptance on 2026-07-21 deployed Meo commit `0ca23f5c` in pipeline
+`#323` and gateway commit `7fd5fcb` in pipeline `#41`. A fresh six-scope
+Codex grant discovered 161 tools and all six Phase 5A additions, read pet
+categories and helper location options, verified a same-locale no-op, and
+exercised category assignment plus status change on a disposable pet before
+deleting it. Shared category/city creation was covered by authority and gateway
+automation but intentionally not called live because neither shared-reference
+endpoint has a cleanup path. Cleanup completed, post-acceptance logs contained
+no fatal or credential-pattern matches, and both GPT connector environments
+remained healthy and able to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 

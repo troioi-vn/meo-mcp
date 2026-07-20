@@ -5025,6 +5025,7 @@ class MeoApi:
             "pet_type_id": item.get("pet_type_id"),
             "description": item.get("description"),
             "approved": item.get("approved_at") is not None,
+            "usage_count": item.get("usage_count"),
             "version": item.get("updated_at", item.get("version")),
         }
 

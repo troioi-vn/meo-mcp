@@ -87,6 +87,7 @@ async def test_pet_categories_status_and_delete_are_verified(tmp_path) -> None:
         "slug": "indoor",
         "pet_type_id": 1,
         "approved_at": None,
+        "usage_count": 2,
         "updated_at": "c1",
     }
     with respx.mock:
@@ -152,6 +153,7 @@ async def test_pet_categories_status_and_delete_are_verified(tmp_path) -> None:
             )
 
     assert listed["structuredContent"]["categories"][0]["category_id"] == 4
+    assert listed["structuredContent"]["categories"][0]["usage_count"] == 2
     assert created["structuredContent"]["verified"] is True
     assert changed["structuredContent"]["pet"]["status"] == "lost"
     assert deleted["structuredContent"] == {"pet_id": 7, "deleted": True, "verified": True}
