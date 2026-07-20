@@ -114,6 +114,32 @@ part of the end-user tool surface.
 | `list_ledger_transactions` | Live | Page and filter transactions in one explicit ledger | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/transactions` | Read | Critical; amounts, descriptions, people, and pet links |
 | `get_ledger_transaction` | Live | Read one exact transaction and receipt-presence flag | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/transactions/{transaction_id}` | Read | Critical; detailed financial record |
 | `list_pet_finance_transactions` | Live | Page finance entries linked to one pet across accessible ledgers | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/finance-transactions` | Read | Critical; cross-ledger pet spending/income |
+| `preview_ledger_invitation` | Live | Preview a ledger bearer invitation without putting its token in a URL | `finance:read` | `finance:read` (legacy PAT: `read`) | `POST /api/mcp/ledger-invitations/preview` | Read | Critical; invitation bearer material |
+| `create_ledger` | Live | Create a titled ledger with an explicit currency | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | duplicate preview; `POST /api/ledgers`; overview verification | Create | Critical; creates shared finance boundary |
+| `update_ledger` | Live | Rename one exact ledger from its current version | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | overview preview; `PUT /api/ledgers/{ledger_id}`; overview verification | Update | Critical; shared identity change |
+| `archive_ledger` | Live | Archive one exact versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | overview preview; `POST .../archive`; overview verification | Update | Critical; disables finance mutations |
+| `restore_ledger` | Live | Restore one exact archived ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | archived list preview; `POST .../restore`; overview verification | Update | Critical; re-enables finance access |
+| `delete_ledger` | Live | Permanently delete one unused exact ledger after title preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | overview preview; `DELETE /api/ledgers/{ledger_id}`; absence verification | Delete | Critical; destroys unused ledger |
+| `add_ledger_member` | Live | Add one exact suggested user as an equal member | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview/suggestion preview; `POST .../members`; overview verification | Create | Critical; grants finance access |
+| `remove_ledger_member` | Live | Remove one exact member after name preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | overview preview; `DELETE .../members/{user_id}`; overview verification | Delete | Critical; revokes finance access |
+| `leave_ledger` | Live | Leave one exact ledger after overview preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | overview preview; `POST .../leave`; absence verification | Delete | Critical; ends caller access |
+| `add_ledger_pet` | Live | Assign one exact manageable pet to a versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview/pet preview; `POST .../pets/{pet_id}`; overview verification | Create | Critical; links pet spending |
+| `remove_ledger_pet` | Live | Remove one exact manual pet assignment after name preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | overview preview; `DELETE .../pets/{pet_id}`; overview verification | Delete | Critical; changes pet finance linkage |
+| `link_ledger_group` | Live | Link one exact group to a versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | overview preview; `POST .../group-link`; overview verification | Update | Critical; cross-boundary group sync |
+| `unlink_ledger_group` | Live | Unlink the group from one exact versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | overview preview; `DELETE .../group-link`; overview verification | Update | Critical; ends group sync |
+| `create_ledger_invitation` | Live | Create a bearer invitation for one exact ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview preview; `POST .../invitations`; list verification | Create | Critical; emits bearer access material |
+| `revoke_ledger_invitation` | Live | Revoke one exact pending ledger invitation | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | invitation preview; `DELETE .../invitations/{invitation_id}`; absence verification | Delete | Critical; invalidates bearer material |
+| `accept_ledger_invitation` | Live | Accept an exact previewed ledger invitation | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | body-token preview; `POST /api/mcp/ledger-invitations/accept`; overview verification | Create | Critical; grants caller ledger access |
+| `decline_ledger_invitation` | Live | Decline an exact previewed ledger invitation | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | body-token preview; `POST /api/mcp/ledger-invitations/decline`; inactive verification | Update | Critical; permanently consumes invitation |
+| `create_ledger_account` | Live | Create one account on an exact versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview preview; `POST .../accounts`; overview verification | Create | High; changes configuration |
+| `update_ledger_account` | Live | Rename one exact account from its current version | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | account preview; `PUT .../accounts/{account_id}` | Update | High; configuration change |
+| `archive_ledger_account` | Live | Toggle archive on one exact account after state preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | account preview; `POST .../accounts/{account_id}/archive` | Update | High; configuration change |
+| `create_ledger_category` | Live | Create one category on an exact versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview preview; `POST .../categories`; overview verification | Create | High; changes configuration |
+| `update_ledger_category` | Live | Update one exact category from its current version | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | category preview; `PUT .../categories/{category_id}` | Update | High; configuration change |
+| `archive_ledger_category` | Live | Toggle archive on one exact category after state preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | category preview; `POST .../categories/{category_id}/archive` | Update | High; configuration change |
+| `create_ledger_transaction` | Live | Record one income or expense on an exact versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview preview; `POST .../transactions`; detail verification | Create | Critical; creates financial audit data |
+| `update_ledger_transaction` | Live | Correct one exact transaction at a known version | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | detail preview; `PUT .../transactions/{transaction_id}`; detail verification | Update | Critical; overwrites financial audit data |
+| `delete_ledger_transaction` | Live | Delete one exact transaction after type/amount/date preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE .../transactions/{transaction_id}`; absence verification | Delete | Critical; removes financial audit data |
 | `get_notification_inbox` | Live | Read bounded bell notifications plus unread bell/message counts | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notifications/unified` | Read | High; private event and action metadata |
 | `get_notification_preferences` | Live | Read per-event delivery preferences | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notification-preferences` | Read | Moderate; communication settings |
 | `get_my_profile` | Live | Read a narrowed self profile, locale, avatar, storage, and account state | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me` | Read | Critical; personal identity and account metadata |
@@ -157,6 +183,7 @@ part of the end-user tool surface.
 | `groups:read` | View groups, members, assigned pets, suggestions, and pending invitations available to the caller | `groups:read` | Group reads only |
 | `groups:write` | Create and manage groups, memberships, assigned pets, and group invitations | `groups:write` | Group mutations only; tools pair it with `groups:read` |
 | `finance:read` | View accessible ledgers, transactions, totals, configuration, pets, members, suggestions, and pending invitations | `finance:read` | Finance reads only |
+| `finance:write` | Create and manage ledgers, transactions, accounts, categories, members, pets, and ledger invitations | `finance:write` | Finance mutations only; tools pair it with `finance:read` |
 | `notifications:read` | View the caller's notification inbox, unread counts, available actions, and delivery preferences | `notifications:read` | Notification reads only |
 | `profile:read` | View a narrowed self profile and the caller's own weight history | `profile:read` | Self-profile reads only |
 | `invitations:read` | View onboarding invitations sent by the caller and their lifecycle totals | `invitations:read` | Account-invitation reads only |
@@ -706,6 +733,47 @@ Successful mutations perform a post-write detail/list/absence read. Stable
 errors include the shared validation, idempotency, concurrency, authorization,
 inactive-invitation, and post-write-verification codes. Deletion and access
 changes use destructive annotations; create/update operations do not.
+
+
+## Phase 4B2 finance write contract
+
+Phase 4B2 introduces only `finance:write`, always paired with `finance:read` by
+mutation tools. Every mutation carries an idempotency key. Operations against an
+existing ledger, account, category, transaction, or invitation also carry the
+exact `base_version` from the matching read/preview.
+
+- `create_ledger(title, currency_code, idempotency_key)` normalizes a required
+  title and 3-letter currency. Meo serializes MCP creates per user and returns
+  stable visible-ledger IDs instead of guessing whether an equal normalized
+  title is intentional; `allow_duplicate` is required for a deliberately
+  distinct equal-title ledger. Idempotency resolves before this duplicate guard.
+- `update_ledger`, `archive_ledger`, `restore_ledger`, and `delete_ledger` read
+  the target first. Delete compares `expected_title` and only succeeds when Meo
+  reports `can_delete`.
+- Membership tools require explicit `ledger_id` and `user_id`. Members are equal;
+  there is no role field. Addition proves the user remains in the suggestion set.
+  Removal requires `expected_user_name`. `leave_ledger` ends caller access.
+- Pet assignment tools accept only explicit positive pet IDs. Removal requires
+  `expected_pet_name` and fails for group-synced pets in Meo.
+- Group link/unlink are finance mutations that Meo additionally authorizes
+  against the target group. Receipt binary upload/download remains out of MCP.
+- Account and category create/update/archive use ledger or record versions.
+  Archive tools require `expected_archived` so a stale toggle cannot invert the
+  wrong way.
+- Transaction create/update/delete require explicit account, type, major-unit
+  amount string, and date. Delete compares expected type/amount/date before
+  mutation and verifies absence afterward.
+- Manager invitation create/revoke uses explicit ledger and invitation IDs plus
+  ledger version. Recipient preview/accept/decline sends the 64-character bearer
+  token in the request body to type-specific MCP authority endpoints. Accept and
+  decline require the invitation `base_version` from preview and
+  `expected_ledger_title`. The ledger endpoints reject pet or group invitations
+  so `finance:write` cannot cross domains.
+
+Successful mutations perform a post-write overview/detail/list/absence read.
+Stable errors include the shared validation, idempotency, concurrency,
+authorization, inactive-invitation, and post-write-verification codes. Deletion
+and access changes use destructive annotations; create operations do not.
 
 ## Errors
 

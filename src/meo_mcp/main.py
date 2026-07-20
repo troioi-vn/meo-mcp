@@ -1218,6 +1218,387 @@ def create_app(settings: Settings | None = None) -> Starlette:
         return await call(api.list_pet_finance_transactions, pet_id, page)
 
     @server.tool(annotations=read_annotations)
+    async def preview_ledger_invitation(invitation: str) -> CallToolResult:
+        """Preview a ledger bearer invitation without placing its token in an upstream URL."""
+        return await call(api.preview_ledger_invitation, invitation)
+
+    @server.tool(annotations=create_annotations)
+    async def create_ledger(
+        title: str,
+        currency_code: str,
+        idempotency_key: str,
+        allow_duplicate: bool = False,
+    ) -> CallToolResult:
+        """Create and verify a ledger with an explicit currency code."""
+        return await call(api.create_ledger, title, currency_code, idempotency_key, allow_duplicate)
+
+    @server.tool(annotations=update_annotations)
+    async def update_ledger(
+        ledger_id: int,
+        base_version: str,
+        title: str,
+        idempotency_key: str,
+        currency_code: str | None = None,
+    ) -> CallToolResult:
+        """Rename one exact ledger from the version returned by get_ledger_overview."""
+        return await call(
+            api.update_ledger, ledger_id, base_version, title, idempotency_key, currency_code
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def archive_ledger(
+        ledger_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Archive one exact versioned ledger and verify its archived state."""
+        return await call(api.archive_ledger, ledger_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def restore_ledger(
+        ledger_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Restore one exact archived ledger and verify it is active again."""
+        return await call(api.restore_ledger, ledger_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def delete_ledger(
+        ledger_id: int,
+        base_version: str,
+        expected_title: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete an unused versioned ledger whose exact title matches."""
+        return await call(
+            api.delete_ledger, ledger_id, base_version, expected_title, idempotency_key
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def add_ledger_member(
+        ledger_id: int,
+        user_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Add one freshly suggested stable user as an equal ledger member."""
+        return await call(api.add_ledger_member, ledger_id, user_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def remove_ledger_member(
+        ledger_id: int,
+        user_id: int,
+        expected_user_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Remove one exact ledger member after a versioned name preview."""
+        return await call(
+            api.remove_ledger_member,
+            ledger_id,
+            user_id,
+            expected_user_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def leave_ledger(
+        ledger_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Leave one exact ledger after a versioned overview preview."""
+        return await call(api.leave_ledger, ledger_id, base_version, idempotency_key)
+
+    @server.tool(annotations=create_annotations)
+    async def add_ledger_pet(
+        ledger_id: int,
+        pet_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Assign one exact manageable pet ID to a versioned ledger."""
+        return await call(api.add_ledger_pet, ledger_id, pet_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def remove_ledger_pet(
+        ledger_id: int,
+        pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Remove one exact manual pet assignment after a versioned name preview."""
+        return await call(
+            api.remove_ledger_pet,
+            ledger_id,
+            pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def link_ledger_group(
+        ledger_id: int,
+        group_id: int,
+        base_version: str,
+        idempotency_key: str,
+        import_pets: bool = False,
+        sync_group_pets: bool = False,
+    ) -> CallToolResult:
+        """Link one exact group to a versioned ledger with optional pet import/sync."""
+        return await call(
+            api.link_ledger_group,
+            ledger_id,
+            group_id,
+            base_version,
+            idempotency_key,
+            import_pets,
+            sync_group_pets,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def unlink_ledger_group(
+        ledger_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Unlink the group from one exact versioned ledger."""
+        return await call(api.unlink_ledger_group, ledger_id, base_version, idempotency_key)
+
+    @server.tool(annotations=create_annotations)
+    async def create_ledger_invitation(
+        ledger_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Create a bearer invitation for one exact versioned ledger."""
+        return await call(api.create_ledger_invitation, ledger_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def revoke_ledger_invitation(
+        ledger_id: int,
+        invitation_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Revoke one exact pending ledger invitation and verify its absence."""
+        return await call(
+            api.revoke_ledger_invitation,
+            ledger_id,
+            invitation_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def accept_ledger_invitation(
+        invitation: str,
+        expected_ledger_title: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Accept only after an exact fresh ledger invitation preview."""
+        return await call(
+            api.accept_ledger_invitation,
+            invitation,
+            expected_ledger_title,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def decline_ledger_invitation(
+        invitation: str,
+        expected_ledger_title: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Decline only after an exact fresh ledger invitation preview."""
+        return await call(
+            api.decline_ledger_invitation,
+            invitation,
+            expected_ledger_title,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def create_ledger_account(
+        ledger_id: int,
+        name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Create and verify one account on an exact versioned ledger."""
+        return await call(api.create_ledger_account, ledger_id, name, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def update_ledger_account(
+        ledger_id: int,
+        account_id: int,
+        name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Rename one exact ledger account from its current version."""
+        return await call(
+            api.update_ledger_account,
+            ledger_id,
+            account_id,
+            name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def archive_ledger_account(
+        ledger_id: int,
+        account_id: int,
+        expected_archived: bool,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Toggle archive on one exact account after matching expected_archived."""
+        return await call(
+            api.archive_ledger_account,
+            ledger_id,
+            account_id,
+            expected_archived,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def create_ledger_category(
+        ledger_id: int,
+        name: str,
+        applies_to: Literal["income", "expense", "both"],
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Create and verify one category on an exact versioned ledger."""
+        return await call(
+            api.create_ledger_category,
+            ledger_id,
+            name,
+            applies_to,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_ledger_category(
+        ledger_id: int,
+        category_id: int,
+        base_version: str,
+        idempotency_key: str,
+        name: str | None = None,
+        applies_to: Literal["income", "expense", "both"] | None = None,
+    ) -> CallToolResult:
+        """Update one exact ledger category from its current version."""
+        return await call(
+            api.update_ledger_category,
+            ledger_id,
+            category_id,
+            base_version,
+            idempotency_key,
+            name,
+            applies_to,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def archive_ledger_category(
+        ledger_id: int,
+        category_id: int,
+        expected_archived: bool,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Toggle archive on one exact category after matching expected_archived."""
+        return await call(
+            api.archive_ledger_category,
+            ledger_id,
+            category_id,
+            expected_archived,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def create_ledger_transaction(
+        ledger_id: int,
+        account_id: int,
+        transaction_type: Literal["income", "expense"],
+        amount: str,
+        occurred_on: str,
+        base_version: str,
+        idempotency_key: str,
+        category_id: int | None = None,
+        description: str | None = None,
+        pet_ids: list[int] | None = None,
+    ) -> CallToolResult:
+        """Create and verify one ledger transaction from a versioned ledger preview."""
+        return await call(
+            api.create_ledger_transaction,
+            ledger_id,
+            account_id,
+            transaction_type,
+            amount,
+            occurred_on,
+            base_version,
+            idempotency_key,
+            category_id,
+            description,
+            pet_ids,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_ledger_transaction(
+        ledger_id: int,
+        transaction_id: int,
+        base_version: str,
+        idempotency_key: str,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        transaction_type: Literal["income", "expense"] | None = None,
+        amount: str | None = None,
+        occurred_on: str | None = None,
+        description: str | None = None,
+        pet_ids: list[int] | None = None,
+    ) -> CallToolResult:
+        """Update one exact ledger transaction from its current version."""
+        return await call(
+            api.update_ledger_transaction,
+            ledger_id,
+            transaction_id,
+            base_version,
+            idempotency_key,
+            account_id,
+            category_id,
+            transaction_type,
+            amount,
+            occurred_on,
+            description,
+            pet_ids,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_ledger_transaction(
+        ledger_id: int,
+        transaction_id: int,
+        expected_type: Literal["income", "expense"],
+        expected_amount: str,
+        expected_occurred_on: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete one exact transaction after matching type, amount, and date."""
+        return await call(
+            api.delete_ledger_transaction,
+            ledger_id,
+            transaction_id,
+            expected_type,
+            expected_amount,
+            expected_occurred_on,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=read_annotations)
     async def get_notification_inbox(
         limit: int = 20, include_notifications: bool = True
     ) -> CallToolResult:

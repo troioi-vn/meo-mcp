@@ -1896,6 +1896,882 @@ class MeoApi:
             "pagination": self._simple_pagination(data, default_per_page=20),
         }
 
+    async def preview_ledger_invitation(self, invitation: str) -> dict[str, Any]:
+        token = self._invitation_token(invitation)
+        delegated = await self._delegated_token("finance:read")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/mcp/ledger-invitations/preview",
+            json_data={"token": token},
+        )
+        return {"invitation": self._ledger_invitation_preview(self._object(payload))}
+
+    async def create_ledger(
+        self,
+        title: str,
+        currency_code: str,
+        idempotency_key: str,
+        allow_duplicate: bool = False,
+    ) -> dict[str, Any]:
+        title = self._required_text(title, "title", 255)
+        code = self._required_text(currency_code, "currency_code", 3).upper()
+        if len(code) != 3:
+            self._error("validation_error", "currency_code must be a 3-letter code.", False)
+        key = self._idempotency_key(idempotency_key)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            "/api/ledgers",
+            json_data={
+                "title": title,
+                "currency_code": code,
+                "allow_duplicate": allow_duplicate,
+            },
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        ledger_id = self._response_id(created)
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        return {"ledger": verified["ledger"], "verified": True}
+
+    async def update_ledger(
+        self,
+        ledger_id: int,
+        base_version: str,
+        title: str,
+        idempotency_key: str,
+        currency_code: str | None = None,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        title = self._required_text(title, "title", 255)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_ledger_overview(ledger_id))["ledger"]
+        self._require_version_available(current)
+        payload: dict[str, Any] = {"title": title, "base_version": version}
+        if currency_code is not None:
+            code = self._required_text(currency_code, "currency_code", 3).upper()
+            if len(code) != 3:
+                self._error("validation_error", "currency_code must be a 3-letter code.", False)
+            payload["currency_code"] = code
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/ledgers/{ledger_id}",
+            json_data=payload,
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        if verified["ledger"].get("title") != title:
+            self._verification_error("The ledger rename could not be verified.")
+        return {"ledger": verified["ledger"], "verified": True}
+
+    async def archive_ledger(
+        self, ledger_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_ledger_overview(ledger_id))["ledger"]
+        self._require_version_available(current)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/archive",
+            json_data={"base_version": version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        if verified["ledger"].get("archived_at") is None:
+            self._verification_error("The ledger archive could not be verified.")
+        return {"ledger": verified["ledger"], "archived": True, "verified": True}
+
+    async def restore_ledger(
+        self, ledger_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.list_ledgers(archived=True))["ledgers"]
+        target = next((item for item in current if item.get("ledger_id") == ledger_id), None)
+        if target is None:
+            self._error("upstream_not_found", "The archived ledger was not found.", False, 404)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/restore",
+            json_data={"base_version": version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        if verified["ledger"].get("archived_at") is not None:
+            self._verification_error("The ledger restore could not be verified.")
+        return {"ledger": verified["ledger"], "restored": True, "verified": True}
+
+    async def delete_ledger(
+        self,
+        ledger_id: int,
+        base_version: str,
+        expected_title: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        expected = self._required_text(expected_title, "expected_title", 255)
+        key = self._idempotency_key(idempotency_key)
+        try:
+            current = (await self.get_ledger_overview(ledger_id))["ledger"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            if current.get("title") != expected:
+                self._error("target_mismatch", "The ledger title does not match.", False)
+            if not current.get("can_delete"):
+                self._error(
+                    "upstream_conflict",
+                    "The ledger cannot be permanently deleted in its current state.",
+                    False,
+                    409,
+                )
+            self._require_version_available(current)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        ledgers = (await self._verify(self.list_ledgers))["ledgers"]
+        archived = (await self._verify(self.list_ledgers, True))["ledgers"]
+        if any(item.get("ledger_id") == ledger_id for item in [*ledgers, *archived]):
+            self._verification_error("The deleted ledger is still visible.")
+        return {"ledger_id": ledger_id, "deleted": True, "verified": True}
+
+    async def add_ledger_member(
+        self,
+        ledger_id: int,
+        user_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(user_id, "user_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        overview = await self.get_ledger_overview(ledger_id)
+        members = overview.get("members") if isinstance(overview.get("members"), list) else []
+        if user_id not in {item.get("user_id") for item in members}:
+            suggestions = (await self.list_ledger_member_suggestions(ledger_id))["suggestions"]
+            if user_id not in {item.get("user_id") for item in suggestions}:
+                self._error(
+                    "target_mismatch",
+                    "user_id is not present in the fresh ledger suggestions.",
+                    False,
+                )
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/members",
+            json_data={"user_id": user_id, "base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        after = verified.get("members") if isinstance(verified.get("members"), list) else []
+        if user_id not in {item.get("user_id") for item in after}:
+            self._verification_error("The ledger member could not be verified.")
+        return {"ledger": verified["ledger"], "members": after, "verified": True}
+
+    async def remove_ledger_member(
+        self,
+        ledger_id: int,
+        user_id: int,
+        expected_user_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(user_id, "user_id")
+        expected = self._required_text(expected_user_name, "expected_user_name", 255)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        overview = await self.get_ledger_overview(ledger_id)
+        members = overview.get("members") if isinstance(overview.get("members"), list) else []
+        target = next((item for item in members if item.get("user_id") == user_id), None)
+        if target is not None and target.get("user_name") != expected:
+            self._error("target_mismatch", "The ledger member name does not match.", False)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}/members/{user_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        after = verified.get("members") if isinstance(verified.get("members"), list) else []
+        if any(item.get("user_id") == user_id for item in after):
+            self._verification_error("The removed ledger member is still active.")
+        return {"ledger": verified["ledger"], "user_id": user_id, "removed": True, "verified": True}
+
+    async def leave_ledger(
+        self, ledger_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/leave",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        ledgers = (await self._verify(self.list_ledgers))["ledgers"]
+        if any(item.get("ledger_id") == ledger_id for item in ledgers):
+            self._verification_error("The caller still has ledger access.")
+        return {"ledger_id": ledger_id, "left": True, "verified": True}
+
+    async def add_ledger_pet(
+        self,
+        ledger_id: int,
+        pet_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(pet_id, "pet_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        owned_ids = {item.get("id") for item in (await self.list_pets())["pets"]}
+        if pet_id not in owned_ids:
+            self._error("target_mismatch", "pet_id must be in the fresh pet list.", False)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/pets/{pet_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        pets = verified.get("pets") if isinstance(verified.get("pets"), list) else []
+        if pet_id not in {item.get("pet_id") for item in pets}:
+            self._verification_error("The ledger pet assignment could not be verified.")
+        return {"ledger": verified["ledger"], "pets": pets, "verified": True}
+
+    async def remove_ledger_pet(
+        self,
+        ledger_id: int,
+        pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(pet_id, "pet_id")
+        expected = self._required_text(expected_pet_name, "expected_pet_name", 255)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        overview = await self.get_ledger_overview(ledger_id)
+        pets = overview.get("pets") if isinstance(overview.get("pets"), list) else []
+        target = next((item for item in pets if item.get("pet_id") == pet_id), None)
+        if target is not None and target.get("pet_name") != expected:
+            self._error("target_mismatch", "The ledger pet name does not match.", False)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}/pets/{pet_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        after = verified.get("pets") if isinstance(verified.get("pets"), list) else []
+        if any(item.get("pet_id") == pet_id for item in after):
+            self._verification_error("The removed pet is still assigned to the ledger.")
+        return {
+            "ledger": verified["ledger"],
+            "pet_id": pet_id,
+            "removed": True,
+            "verified": True,
+        }
+
+    async def link_ledger_group(
+        self,
+        ledger_id: int,
+        group_id: int,
+        base_version: str,
+        idempotency_key: str,
+        import_pets: bool = False,
+        sync_group_pets: bool = False,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(group_id, "group_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/group-link",
+            json_data={
+                "group_id": group_id,
+                "import_pets": import_pets,
+                "sync_group_pets": sync_group_pets,
+                "base_version": version,
+            },
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        if verified["ledger"].get("group_id") != group_id:
+            self._verification_error("The ledger group link could not be verified.")
+        return {"ledger": verified["ledger"], "verified": True}
+
+    async def unlink_ledger_group(
+        self, ledger_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}/group-link",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        if verified["ledger"].get("group_id") is not None:
+            self._verification_error("The ledger group unlink could not be verified.")
+        return {"ledger": verified["ledger"], "unlinked": True, "verified": True}
+
+    async def create_ledger_invitation(
+        self, ledger_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/ledgers/{ledger_id}/invitations",
+                json_data={"base_version": version},
+                idempotency_key=key,
+                expected_statuses={200, 201},
+            )
+        )
+        raw = created.get("invitation")
+        if not isinstance(raw, dict):
+            self._verification_error("Meo did not return a stable ledger invitation.")
+        invitation = self._resource_invitation(raw)
+        invitations = (await self._verify(self.list_ledger_invitations, ledger_id))["invitations"]
+        verified = next(
+            (
+                item
+                for item in invitations
+                if item.get("invitation_id") == invitation.get("invitation_id")
+            ),
+            None,
+        )
+        if verified is None:
+            self._verification_error("The created ledger invitation could not be verified.")
+        return {"invitation": verified, "verified": True}
+
+    async def revoke_ledger_invitation(
+        self,
+        ledger_id: int,
+        invitation_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(invitation_id, "invitation_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.list_ledger_invitations(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}/invitations/{invitation_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        after = (await self._verify(self.list_ledger_invitations, ledger_id))["invitations"]
+        if any(item.get("invitation_id") == invitation_id for item in after):
+            self._verification_error("The revoked ledger invitation is still pending.")
+        return {"invitation_id": invitation_id, "revoked": True, "verified": True}
+
+    async def accept_ledger_invitation(
+        self,
+        invitation: str,
+        expected_ledger_title: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._consume_ledger_invitation(
+            invitation,
+            expected_ledger_title,
+            invitation_base_version,
+            idempotency_key,
+            "accept",
+        )
+
+    async def decline_ledger_invitation(
+        self,
+        invitation: str,
+        expected_ledger_title: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._consume_ledger_invitation(
+            invitation,
+            expected_ledger_title,
+            invitation_base_version,
+            idempotency_key,
+            "decline",
+        )
+
+    async def create_ledger_account(
+        self,
+        ledger_id: int,
+        name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        name = self._required_text(name, "name", 255)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/ledgers/{ledger_id}/accounts",
+                json_data={"name": name, "base_version": version},
+                idempotency_key=key,
+                expected_statuses={200, 201},
+            )
+        )
+        account = self._ledger_account(created)
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        accounts = verified.get("accounts") if isinstance(verified.get("accounts"), list) else []
+        if account.get("account_id") not in {item.get("account_id") for item in accounts}:
+            self._verification_error("The created ledger account could not be verified.")
+        return {"account": account, "accounts": accounts, "verified": True}
+
+    async def update_ledger_account(
+        self,
+        ledger_id: int,
+        account_id: int,
+        name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(account_id, "account_id")
+        name = self._required_text(name, "name", 255)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        overview = await self.get_ledger_overview(ledger_id)
+        accounts = overview.get("accounts") if isinstance(overview.get("accounts"), list) else []
+        target = next((item for item in accounts if item.get("account_id") == account_id), None)
+        if target is None:
+            self._error("upstream_not_found", "The ledger account was not found.", False, 404)
+        self._require_version_available(target)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        updated = self._object(
+            await self._request(
+                delegated,
+                "PUT",
+                f"/api/ledgers/{ledger_id}/accounts/{account_id}",
+                json_data={"name": name, "base_version": version},
+                idempotency_key=key,
+            )
+        )
+        account = self._ledger_account(updated)
+        if account.get("name") != name:
+            self._verification_error("The ledger account rename could not be verified.")
+        return {"account": account, "verified": True}
+
+    async def archive_ledger_account(
+        self,
+        ledger_id: int,
+        account_id: int,
+        expected_archived: bool,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(account_id, "account_id")
+        if not isinstance(expected_archived, bool):
+            self._error("validation_error", "expected_archived must be a boolean.", False)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        overview = await self.get_ledger_overview(ledger_id)
+        accounts = overview.get("accounts") if isinstance(overview.get("accounts"), list) else []
+        target = next((item for item in accounts if item.get("account_id") == account_id), None)
+        if target is None:
+            self._error("upstream_not_found", "The ledger account was not found.", False, 404)
+        currently_archived = target.get("archived_at") is not None
+        if currently_archived != expected_archived:
+            self._error(
+                "target_mismatch",
+                "The account archive state does not match expected_archived.",
+                False,
+            )
+        self._require_version_available(target)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        updated = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/ledgers/{ledger_id}/accounts/{account_id}/archive",
+                json_data={"base_version": version},
+                idempotency_key=key,
+            )
+        )
+        account = self._ledger_account(updated)
+        after_archived = account.get("archived_at") is not None
+        if after_archived == expected_archived:
+            self._verification_error("The ledger account archive toggle could not be verified.")
+        return {"account": account, "verified": True}
+
+    async def create_ledger_category(
+        self,
+        ledger_id: int,
+        name: str,
+        applies_to: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        name = self._required_text(name, "name", 255)
+        applies = self._required_text(applies_to, "applies_to", 16)
+        if applies not in {"income", "expense", "both"}:
+            self._error(
+                "validation_error",
+                "applies_to must be income, expense, or both.",
+                False,
+            )
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/ledgers/{ledger_id}/categories",
+                json_data={
+                    "name": name,
+                    "applies_to": applies,
+                    "base_version": version,
+                },
+                idempotency_key=key,
+                expected_statuses={200, 201},
+            )
+        )
+        category = self._ledger_category(created)
+        verified = await self._verify(self.get_ledger_overview, ledger_id)
+        categories = (
+            verified.get("categories") if isinstance(verified.get("categories"), list) else []
+        )
+        if category.get("category_id") not in {item.get("category_id") for item in categories}:
+            self._verification_error("The created ledger category could not be verified.")
+        return {"category": category, "categories": categories, "verified": True}
+
+    async def update_ledger_category(
+        self,
+        ledger_id: int,
+        category_id: int,
+        base_version: str,
+        idempotency_key: str,
+        name: str | None = None,
+        applies_to: str | None = None,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(category_id, "category_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        if name is None and applies_to is None:
+            self._error("validation_error", "Provide name and/or applies_to.", False)
+        overview = await self.get_ledger_overview(ledger_id)
+        categories = (
+            overview.get("categories") if isinstance(overview.get("categories"), list) else []
+        )
+        target = next((item for item in categories if item.get("category_id") == category_id), None)
+        if target is None:
+            self._error("upstream_not_found", "The ledger category was not found.", False, 404)
+        self._require_version_available(target)
+        payload: dict[str, Any] = {"base_version": version}
+        if name is not None:
+            payload["name"] = self._required_text(name, "name", 255)
+        if applies_to is not None:
+            applies = self._required_text(applies_to, "applies_to", 16)
+            if applies not in {"income", "expense", "both"}:
+                self._error(
+                    "validation_error",
+                    "applies_to must be income, expense, or both.",
+                    False,
+                )
+            payload["applies_to"] = applies
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        updated = self._object(
+            await self._request(
+                delegated,
+                "PUT",
+                f"/api/ledgers/{ledger_id}/categories/{category_id}",
+                json_data=payload,
+                idempotency_key=key,
+            )
+        )
+        return {"category": self._ledger_category(updated), "verified": True}
+
+    async def archive_ledger_category(
+        self,
+        ledger_id: int,
+        category_id: int,
+        expected_archived: bool,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(category_id, "category_id")
+        if not isinstance(expected_archived, bool):
+            self._error("validation_error", "expected_archived must be a boolean.", False)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        overview = await self.get_ledger_overview(ledger_id)
+        categories = (
+            overview.get("categories") if isinstance(overview.get("categories"), list) else []
+        )
+        target = next((item for item in categories if item.get("category_id") == category_id), None)
+        if target is None:
+            self._error("upstream_not_found", "The ledger category was not found.", False, 404)
+        currently_archived = target.get("archived_at") is not None
+        if currently_archived != expected_archived:
+            self._error(
+                "target_mismatch",
+                "The category archive state does not match expected_archived.",
+                False,
+            )
+        self._require_version_available(target)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        updated = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/ledgers/{ledger_id}/categories/{category_id}/archive",
+                json_data={"base_version": version},
+                idempotency_key=key,
+            )
+        )
+        category = self._ledger_category(updated)
+        after_archived = category.get("archived_at") is not None
+        if after_archived == expected_archived:
+            self._verification_error("The ledger category archive toggle could not be verified.")
+        return {"category": category, "verified": True}
+
+    async def create_ledger_transaction(
+        self,
+        ledger_id: int,
+        account_id: int,
+        transaction_type: str,
+        amount: str,
+        occurred_on: str,
+        base_version: str,
+        idempotency_key: str,
+        category_id: int | None = None,
+        description: str | None = None,
+        pet_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(account_id, "account_id")
+        tx_type = self._required_text(transaction_type, "transaction_type", 16)
+        if tx_type not in {"income", "expense"}:
+            self._error("validation_error", "transaction_type must be income or expense.", False)
+        amount_text = self._required_text(amount, "amount", 64)
+        date_text = self._required_text(occurred_on, "occurred_on", 32)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        await self.get_ledger_overview(ledger_id)
+        payload: dict[str, Any] = {
+            "account_id": account_id,
+            "type": tx_type,
+            "amount": amount_text,
+            "occurred_on": date_text,
+            "base_version": version,
+        }
+        if category_id is not None:
+            self._positive(category_id, "category_id")
+            payload["category_id"] = category_id
+        if description is not None:
+            payload["description"] = self._required_text(description, "description", 2000)
+        if pet_ids is not None:
+            payload["pet_ids"] = self._positive_id_list(pet_ids, "pet_ids", allow_empty=True)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/ledgers/{ledger_id}/transactions",
+                json_data=payload,
+                idempotency_key=key,
+                expected_statuses={200, 201},
+            )
+        )
+        transaction = self._ledger_transaction(created)
+        transaction_id = transaction.get("transaction_id")
+        self._positive(transaction_id, "transaction_id")
+        verified = await self._verify(self.get_ledger_transaction, ledger_id, transaction_id)
+        return {"transaction": verified["transaction"], "verified": True}
+
+    async def update_ledger_transaction(
+        self,
+        ledger_id: int,
+        transaction_id: int,
+        base_version: str,
+        idempotency_key: str,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        transaction_type: str | None = None,
+        amount: str | None = None,
+        occurred_on: str | None = None,
+        description: str | None = None,
+        pet_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(transaction_id, "transaction_id")
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_ledger_transaction(ledger_id, transaction_id))["transaction"]
+        self._require_version_available(current)
+        payload: dict[str, Any] = {"base_version": version}
+        if account_id is not None:
+            self._positive(account_id, "account_id")
+            payload["account_id"] = account_id
+        if category_id is not None:
+            self._positive(category_id, "category_id")
+            payload["category_id"] = category_id
+        if transaction_type is not None:
+            tx_type = self._required_text(transaction_type, "transaction_type", 16)
+            if tx_type not in {"income", "expense"}:
+                self._error(
+                    "validation_error",
+                    "transaction_type must be income or expense.",
+                    False,
+                )
+            payload["type"] = tx_type
+        if amount is not None:
+            payload["amount"] = self._required_text(amount, "amount", 64)
+        if occurred_on is not None:
+            payload["occurred_on"] = self._required_text(occurred_on, "occurred_on", 32)
+        if description is not None:
+            payload["description"] = self._required_text(description, "description", 2000)
+        if pet_ids is not None:
+            payload["pet_ids"] = self._positive_id_list(pet_ids, "pet_ids", allow_empty=True)
+        if len(payload) == 1:
+            self._error(
+                "validation_error", "Provide at least one transaction field to update.", False
+            )
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/ledgers/{ledger_id}/transactions/{transaction_id}",
+            json_data=payload,
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_ledger_transaction, ledger_id, transaction_id)
+        return {"transaction": verified["transaction"], "verified": True}
+
+    async def delete_ledger_transaction(
+        self,
+        ledger_id: int,
+        transaction_id: int,
+        expected_type: str,
+        expected_amount: str,
+        expected_occurred_on: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(transaction_id, "transaction_id")
+        expected_tx = self._required_text(expected_type, "expected_type", 16)
+        if expected_tx not in {"income", "expense"}:
+            self._error("validation_error", "expected_type must be income or expense.", False)
+        expected_amt = self._required_text(expected_amount, "expected_amount", 64)
+        expected_date = self._required_text(expected_occurred_on, "expected_occurred_on", 32)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        try:
+            current = (await self.get_ledger_transaction(ledger_id, transaction_id))["transaction"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            if (
+                current.get("type") != expected_tx
+                or str(current.get("amount")) != expected_amt
+                or str(current.get("occurred_on")) != expected_date
+            ):
+                self._error(
+                    "target_mismatch",
+                    "The fresh transaction does not match the expected type, amount, or date.",
+                    False,
+                )
+            self._require_version_available(current)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}/transactions/{transaction_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        try:
+            await self.get_ledger_transaction(ledger_id, transaction_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            self._verification_error("The deleted ledger transaction is still readable.")
+        return {
+            "ledger_id": ledger_id,
+            "transaction_id": transaction_id,
+            "deleted": True,
+            "verified": True,
+        }
+
     async def get_notification_inbox(
         self, limit: int = 20, include_notifications: bool = True
     ) -> dict[str, Any]:
@@ -2887,6 +3763,45 @@ class MeoApi:
             self._verification_error("The declined group invitation is still valid.")
         return {"declined": True, "verified": True}
 
+    async def _consume_ledger_invitation(
+        self,
+        invitation: str,
+        expected_ledger_title: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+        action: str,
+    ) -> dict[str, Any]:
+        token = self._invitation_token(invitation)
+        expected_title = self._required_text(expected_ledger_title, "expected_ledger_title", 255)
+        version = self._version(invitation_base_version)
+        key = self._idempotency_key(idempotency_key)
+        preview = (await self.preview_ledger_invitation(token))["invitation"]
+        if preview.get("ledger_title") != expected_title:
+            self._error(
+                "invitation_mismatch",
+                "The fresh invitation preview does not match the expected ledger title.",
+                False,
+            )
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        result = await self._request(
+            delegated,
+            "POST",
+            f"/api/mcp/ledger-invitations/{action}",
+            json_data={"token": token, "base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        if action == "accept":
+            item = self._object(result)
+            ledger_id = item.get("ledger_id")
+            self._positive(ledger_id, "ledger_id")
+            verified = await self._verify(self.get_ledger_overview, ledger_id)
+            return {"ledger": verified["ledger"], "accepted": True, "verified": True}
+        after = (await self.preview_ledger_invitation(token))["invitation"]
+        if after.get("is_valid"):
+            self._verification_error("The declined ledger invitation is still valid.")
+        return {"declined": True, "verified": True}
+
     async def _group_member_change(
         self,
         group_id: int,
@@ -3297,6 +4212,20 @@ class MeoApi:
                     409,
                     {"existing_group_ids": existing_group_ids},
                 )
+            existing_ledger_ids = (
+                data.get("existing_ledger_ids") if isinstance(data, dict) else None
+            )
+            if isinstance(existing_ledger_ids, list) and all(
+                isinstance(value, int) and not isinstance(value, bool) and value > 0
+                for value in existing_ledger_ids
+            ):
+                self._error(
+                    "duplicate_candidate",
+                    "A visible ledger has the same normalized title.",
+                    False,
+                    409,
+                    {"existing_ledger_ids": existing_ledger_ids},
+                )
             if conflict_code == "active_placement_conflict":
                 self._error(
                     "active_placement_conflict",
@@ -3673,6 +4602,24 @@ class MeoApi:
             "inviter_name": inviter.get("name"),
             "pet_name": target.get("name"),
             "relationship_type": target.get("role"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _ledger_invitation_preview(item: dict[str, Any]) -> dict[str, Any]:
+        inviter = item.get("inviter") if isinstance(item.get("inviter"), dict) else {}
+        target = item.get("target") if isinstance(item.get("target"), dict) else {}
+        return {
+            "status": item.get("status"),
+            "expires_at": item.get("expires_at"),
+            "is_valid": bool(item.get("is_valid")),
+            "is_authenticated": bool(item.get("is_authenticated")),
+            "is_self_invitation": bool(item.get("is_self_invitation")),
+            "inviter_name": inviter.get("name"),
+            "ledger_id": target.get("ledger_id"),
+            "ledger_title": target.get("name"),
+            "currency_code": target.get("currency_code"),
+            "role": target.get("role"),
             "version": item.get("updated_at", item.get("version")),
         }
 

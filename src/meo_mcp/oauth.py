@@ -64,6 +64,7 @@ ALLOWED_SCOPES = [
     "groups:read",
     "groups:write",
     "finance:read",
+    "finance:write",
     "notifications:read",
     "profile:read",
     "invitations:read",

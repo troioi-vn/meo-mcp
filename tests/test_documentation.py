@@ -53,6 +53,7 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
         "groups:read",
         "groups:write",
         "finance:read",
+        "finance:write",
         "notifications:read",
         "profile:read",
         "invitations:read",
@@ -78,6 +79,8 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     assert "`send_chat_message`" in catalog
     assert "`get_group_overview`" in catalog
     assert "`get_ledger_overview`" in catalog
+    assert "`create_ledger`" in catalog
+    assert "`finance:write`" in catalog
     assert "`get_notification_inbox`" in catalog
     assert "`get_my_profile`" in catalog
     assert "`get_account_invitation_summary`" in catalog
