@@ -102,6 +102,23 @@ part of the end-user tool surface.
 | `mark_chat_read` | Live | Explicitly advance one chat read receipt | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `update`) | chat read; `POST .../read`; verification | Update | Moderate; activity signal |
 | `delete_own_message` | Live | Soft-delete one exact own message/content/version | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `delete`) | message read; `DELETE /api/msg/messages/{id}`; verification | Delete | Critical; correspondence |
 | `leave_chat` | Live | Leave one exact direct chat after participant preview | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `delete`) | chat read; `DELETE /api/msg/chats/{id}`; verification | Delete | Critical; ends access |
+| `list_groups` | Proposed (Phase 4A) | List groups the caller belongs to with role and size summaries | `groups:read` | `groups:read` (legacy PAT: `read`) | `GET /api/groups` | Read | High; membership metadata |
+| `get_group_overview` | Proposed (Phase 4A) | Read one explicit group with members, roles, pets, and version | `groups:read` | `groups:read` (legacy PAT: `read`) | `GET /api/groups/{group_id}` | Read | High; named people and animal membership |
+| `list_group_member_suggestions` | Proposed (Phase 4A) | Resolve known-user candidates before a group membership write | `groups:read` | `groups:read` (legacy PAT: `read`) | `GET /api/groups/{group_id}/member-suggestions` | Read | High; user identity suggestions |
+| `list_group_invitations` | Proposed (Phase 4A) | List pending bearer invitations for one managed group | `groups:read` | `groups:read` (legacy PAT: `read`) | `GET /api/groups/{group_id}/invitations` | Read | High; invitation URLs grant access |
+| `list_currencies` | Proposed (Phase 4A) | Resolve supported currency codes and minor-unit precision | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/currencies` | Read | Low; reference data |
+| `list_ledgers` | Proposed (Phase 4A) | List accessible active or archived ledgers | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers` | Read | High; shared-finance membership and totals context |
+| `get_ledger_overview` | Proposed (Phase 4A) | Aggregate one ledger's identity, members, pets, configuration, and dashboard | `finance:read` | `finance:read` (legacy PAT: `read`) | ledger detail, dashboard, accounts, categories, members, pets `GET`s | Read/aggregate | Critical; financial totals and named participants |
+| `list_ledger_member_suggestions` | Proposed (Phase 4A) | Resolve known-user candidates before a ledger membership write | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/member-suggestions` | Read | High; user identity suggestions |
+| `list_ledger_invitations` | Proposed (Phase 4A) | List pending bearer invitations for one managed ledger | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/invitations` | Read | Critical; finance invitation URLs grant access |
+| `list_ledger_transactions` | Proposed (Phase 4A) | Page and filter transactions in one explicit ledger | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/transactions` | Read | Critical; amounts, descriptions, people, and pet links |
+| `get_ledger_transaction` | Proposed (Phase 4A) | Read one exact transaction and receipt-presence flag | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/transactions/{transaction_id}` | Read | Critical; detailed financial record |
+| `list_pet_finance_transactions` | Proposed (Phase 4A) | Page finance entries linked to one pet across accessible ledgers | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/finance-transactions` | Read | Critical; cross-ledger pet spending/income |
+| `get_notification_inbox` | Proposed (Phase 4A) | Read bounded bell notifications plus unread bell/message counts | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notifications/unified` | Read | High; private event and action metadata |
+| `get_notification_preferences` | Proposed (Phase 4A) | Read per-event delivery preferences | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notification-preferences` | Read | Moderate; communication settings |
+| `get_my_profile` | Proposed (Phase 4A) | Read a narrowed self profile, locale, avatar, storage, and account state | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me` | Read | Critical; personal identity and account metadata |
+| `list_owner_weights` | Proposed (Phase 4A) | Page the caller's own body-weight history | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me/owner-weights` | Read | Critical; personal health data |
+| `get_account_invitation_summary` | Proposed (Phase 4A) | Read sent onboarding invitations and lifecycle totals | `invitations:read` | `invitations:read` (legacy PAT: `read`) | `GET /api/invitations`; `GET /api/invitations/stats` | Read/aggregate | High; bearer codes and recipient identity |
 
 ## Scope model
 
@@ -123,6 +140,11 @@ part of the end-user tool surface.
 | `helpers:write` | Create and manage the caller's helper profiles and photos | `helpers:write` | Helper mutations; paired with `helpers:read` |
 | `messages:read` | View the caller's chats, private messages, and unread counts | `messages:read` | Messaging reads without changing read receipts |
 | `messages:write` | Open placement chats, send/remove messages, mark read, and leave chats | `messages:write` | Messaging mutations; paired with `messages:read` |
+| `groups:read` | View groups, members, assigned pets, suggestions, and pending invitations available to the caller | `groups:read` | Group reads only |
+| `finance:read` | View accessible ledgers, transactions, totals, configuration, pets, members, suggestions, and pending invitations | `finance:read` | Finance reads only |
+| `notifications:read` | View the caller's notification inbox, unread counts, available actions, and delivery preferences | `notifications:read` | Notification reads only |
+| `profile:read` | View a narrowed self profile and the caller's own weight history | `profile:read` | Self-profile reads only |
+| `invitations:read` | View onboarding invitations sent by the caller and their lifecycle totals | `invitations:read` | Account-invitation reads only |
 
 Scopes are independently requestable non-empty subsets. Dynamic registration
 defaults to the full advertised set, while authorization can request a narrow
@@ -578,6 +600,55 @@ all lifecycle/delete tools are additionally destructive.
   stale conversational reference cannot select a different message. Lookup and
   post-write verification follow at most ten 100-message pages; older targets
   fail with `target_not_in_bounded_history` instead of mutating blindly.
+
+## Phase 4A groups, finance, notifications, profile, and invitation reads
+
+Phase 4A is a read-only deployment checkpoint. Its five scopes are independent:
+financial access does not grant group membership, notification, self-profile,
+or onboarding-invitation access. Every tool uses the shared read annotations.
+
+- Group summaries expose stable group ID/name, the caller's role, and member/pet
+  counts. `get_group_overview` requires a positive group ID and narrows members
+  to stable user ID, display name, role, and membership start time; pets to ID,
+  name, species, and public photo; and `version` to the authority `updated_at`.
+  Suggestions contain only user ID and display name. Invitation lists preserve
+  only pending invitation ID, target summary, expiry/version, and bearer URL.
+- Currency options expose code, localized name, symbol, and non-negative minor
+  units. Ledger summaries expose stable ledger ID/title, currency, optional
+  linked group, archive state, member/pet counts, caller capabilities, and
+  nullable version. `get_ledger_overview` requires a positive ledger ID and
+  aggregates its detail, current/previous-month totals, six-month trend,
+  account/category activity, members, pets, and newest five transactions.
+- Transaction lists accept positive `ledger_id`, page and per-page bounds,
+  optional ISO date range, exact `income | expense`, positive account/category/
+  pet/creator IDs, and bounded search text. Results preserve integer minor-unit
+  amounts plus the formatted major amount, exact date, description, narrowed
+  creator/pet references, receipt presence, and authority version. Detail
+  requires both ledger and transaction IDs; pet finance additionally requires
+  a positive pet ID and never crosses ledgers unavailable to the caller.
+- `get_notification_inbox` bounds `limit` to 1–50 and can omit notification
+  bodies while still returning non-negative unread bell/message counts. Items
+  contain stable ID, level, title/body, safe application-relative URL, available
+  action keys, created/read timestamps, and version when supplied. Reading does
+  not mark anything read or execute an action. Notification preferences expose
+  only type/label/group and the three delivery booleans.
+- `get_my_profile` returns an allowlist of self fields needed by agents: stable
+  user ID, name, email, locale/timezone where present, avatar URL, password and
+  verification state, premium/banned state, storage usage/limit, latest owner
+  weight summary, and profile version. It excludes roles, admin capability,
+  authentication provider internals, and hidden model attributes.
+  `list_owner_weights` accepts a positive page and returns record ID, weight in
+  kilograms, date, notes if present, version, and bounded pagination metadata.
+- `get_account_invitation_summary` combines the caller's sent onboarding
+  invitations with total/pending/accepted/expired/revoked counts. It narrows a
+  recipient to stable ID, display name, and email. Invitation codes and URLs are
+  bearer material: they are returned only to the authorized caller and must
+  never appear in gateway logs or structured errors.
+
+Receipt binaries are not returned in Phase 4A: transaction reads expose the
+authoritative `has_receipt` flag. A future receipt tool requires a separately
+designed bounded MCP content contract rather than leaking an authenticated API
+URL or embedding an unbounded 10 MiB file.
 
 ## Errors
 

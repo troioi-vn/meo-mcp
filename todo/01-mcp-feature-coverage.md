@@ -161,13 +161,19 @@ deployed the tool surface and matching error translation.
 
 ## Phase 4 — Groups, finance, notifications, profile
 
-- [ ] Groups + invitations
-- [ ] Finance/ledgers: ship read summaries first; put mutations in a separately
-      reviewed milestone with narrow scopes and audit-friendly semantics
-- [ ] Notifications inbox + mark read / actions
-- [ ] User profile (me, safe settings; no password change via MCP unless explicitly required)
-- [ ] Resource invitations as needed for share flows
-- [ ] Scopes + Meo abilities + tests + development-endpoint smoke
+- [ ] Phase 4A: group, finance, notification, profile, and onboarding-invitation
+      reads with independent scopes
+- [ ] Phase 4A: finance summaries, configuration, and transaction reads before
+      any finance mutation
+- [ ] Phase 4A: Meo abilities, tests, deployment, and real-client smoke
+- [ ] Phase 4B: separately reviewed group and resource-invitation writes
+- [ ] Phase 4B: separately reviewed finance/ledger writes with narrow scopes and
+      audit-friendly semantics
+- [ ] Phase 4B: notification mark-read/actions/preferences and safe profile
+      writes; no password change or account deletion via MCP
+- [ ] Phase 4B: account-invitation create/revoke only if the stable target and
+      bearer-material contract can be enforced safely
+- [ ] Phase 4B: scopes, Meo abilities, tests, deployment, and real-client smoke
 - [ ] Coverage checklist against OpenAPI tags: every in-scope domain has at least
       agent-useful read coverage; writes where product wants agent action
 
