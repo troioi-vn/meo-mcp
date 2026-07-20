@@ -88,6 +88,8 @@ Current tool error codes:
 | `validation_error` | no | — | Correct the tool input before retrying |
 | `duplicate_candidate` | no | `409` | Inspect the existing stable pet IDs; create only if this is a distinct pet intent |
 | `idempotency_conflict` | no | `409` | Use the original payload or a new key for a genuinely new intent |
+| `active_placement_conflict` | no | `409` | Reuse/manage the existing active placement request or choose another request type |
+| `upstream_conflict` | no | `409` | Re-read the target; its domain state rejects this write |
 | `idempotency_in_progress` | yes | `425` | Retry later with the same key and payload |
 | `concurrency_conflict` | no | `409` or — | Re-read the explicit target and reconcile before updating |
 | `post_write_verification_failed` | yes | — | The write may have succeeded; read the stable target before any retry |

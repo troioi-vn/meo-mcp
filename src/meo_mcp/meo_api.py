@@ -2610,6 +2610,13 @@ class MeoApi:
                     409,
                     {"existing_pet_ids": existing_pet_ids},
                 )
+            if conflict_code == "active_placement_conflict":
+                self._error(
+                    "active_placement_conflict",
+                    "This pet already has an active placement request of that type.",
+                    False,
+                    409,
+                )
             if isinstance(data, dict) and data.get("server_version") is not None:
                 self._error(
                     "concurrency_conflict",
@@ -2617,9 +2624,16 @@ class MeoApi:
                     False,
                     409,
                 )
+            if conflict_code == "idempotency_conflict":
+                self._error(
+                    "idempotency_conflict",
+                    "The idempotency key was already used for a different write.",
+                    False,
+                    409,
+                )
             self._error(
-                "idempotency_conflict",
-                "The idempotency key was already used for a different write.",
+                "upstream_conflict",
+                "Meo rejected the write because the target state conflicts with it.",
                 False,
                 409,
             )

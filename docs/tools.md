@@ -590,6 +590,8 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 | `upstream_validation_failed` | no | Meo rejected the normalized request with `422`; upstream field text is not forwarded |
 | `duplicate_candidate` | no | Pet create found an exact existing name/species match; inspect stable IDs before deciding whether this is a distinct pet |
 | `idempotency_conflict` | no | The idempotency key was reused for a different normalized write |
+| `active_placement_conflict` | no | The pet already has an active placement request of the requested type |
+| `upstream_conflict` | no | Meo rejected the write because the target's current domain state conflicts |
 | `idempotency_in_progress` | yes | The same idempotent write is still being processed; retry later with the same key |
 | `concurrency_conflict` | no | The supplied base version is stale; re-read and reconcile before another update |
 | `post_write_verification_failed` | yes | Meo accepted the write but its stable target could not be read back safely |

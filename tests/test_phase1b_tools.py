@@ -451,7 +451,13 @@ async def test_exact_update_retry_reaches_meo_idempotency_before_version_check(t
     [
         (422, {"message": "private details"}, "upstream_validation_failed", False),
         (409, {"data": {"server_version": "new"}}, "concurrency_conflict", False),
-        (409, {"message": "conflict"}, "idempotency_conflict", False),
+        (
+            409,
+            {"data": {"code": "idempotency_conflict"}},
+            "idempotency_conflict",
+            False,
+        ),
+        (409, {"message": "domain conflict"}, "upstream_conflict", False),
         (425, {"message": "pending"}, "idempotency_in_progress", True),
         (503, {"message": "private outage"}, "upstream_server_error", True),
     ],
