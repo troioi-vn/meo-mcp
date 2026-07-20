@@ -48,9 +48,13 @@ remote server from the CLI:
 
 ```bash
 codex mcp add meo-mai-moi --url <MCP_BASE_URL>/mcp
-codex mcp login meo-mai-moi --scopes pets:read
+codex mcp login meo-mai-moi --scopes pets:read,health:read
 codex mcp list
 ```
+
+Request only `pets:read` when the client needs pet profiles but not health
+history. OAuth accepts either narrow scope or the documented combination, and
+each tool still enforces its own required scope.
 
 Alternatively, open **Settings → MCP servers**, add a Streamable HTTP server,
 then select **Authenticate** and restart the app or IDE extension when prompted.

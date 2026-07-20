@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phase 1A — GPT-connector read parity)
+Status: in progress (Phase 1A complete; Phase 1B is next)
 
 ## Goal
 
@@ -71,7 +71,12 @@ Match the read side of the ChatGPT connector so agents can inspect pets and core
 - [x] Structured error translation for validation / 403 / 404
 - [x] Tests per tool (auth required, happy path, Meo error mapping)
 - [x] Update server `instructions` string as capabilities grow
-- [ ] Smoke on the development MCP endpoint after deploy using the private operator runbook
+- [x] Smoke on the development MCP endpoint after deploy using the private operator runbook
+
+Development acceptance on 2026-07-20 covered OAuth discovery and consent in
+MCP Inspector, a real `list_pets` call, and fresh Codex discovery of all 11 read
+tools followed by successful pet, weight, vaccination, medical-record, and
+overview calls. Only aggregate counts and status flags were retained.
 
 ## Phase 1B — Low-risk GPT-connector writes
 
