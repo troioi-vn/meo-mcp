@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A, 1B, 2A, 2B, 3A, and 3B complete; Phase 4 is next)
+Status: in progress (Phases 1A through 4A complete; Phase 4B is next)
 
 ## Goal
 
@@ -161,11 +161,11 @@ deployed the tool surface and matching error translation.
 
 ## Phase 4 — Groups, finance, notifications, profile
 
-- [ ] Phase 4A: group, finance, notification, profile, and onboarding-invitation
+- [x] Phase 4A: group, finance, notification, profile, and onboarding-invitation
       reads with independent scopes
-- [ ] Phase 4A: finance summaries, configuration, and transaction reads before
+- [x] Phase 4A: finance summaries, configuration, and transaction reads before
       any finance mutation
-- [ ] Phase 4A: Meo abilities, tests, deployment, and real-client smoke
+- [x] Phase 4A: Meo abilities, tests, deployment, and real-client smoke
 - [ ] Phase 4B: separately reviewed group and resource-invitation writes
 - [ ] Phase 4B: separately reviewed finance/ledger writes with narrow scopes and
       audit-friendly semantics
@@ -176,6 +176,17 @@ deployed the tool surface and matching error translation.
 - [ ] Phase 4B: scopes, Meo abilities, tests, deployment, and real-client smoke
 - [ ] Coverage checklist against OpenAPI tags: every in-scope domain has at least
       agent-useful read coverage; writes where product wants agent action
+
+Phase 4A development acceptance on 2026-07-20 used a fresh twenty-one-scope
+OAuth grant and discovered all 103 tools, including the 17 new read tools. It
+verified group overview/suggestions/invitations; currency, ledger overview,
+suggestion, invitation, and paginated finance reads; notification counts and
+preferences; narrowed self-profile and owner-weight reads; and account-
+invitation totals. The selected ledger had no transaction detail target, while
+the independent pet-finance path returned a valid paginated record. No bearer
+invitation material or private response content was retained. Meo pipeline
+`#318` deployed `97ad863c`; gateway pipeline `#32` deployed `414e507`.
+Both GPT connector environments remained healthy and able to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
