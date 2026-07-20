@@ -66,8 +66,11 @@ ALLOWED_SCOPES = [
     "finance:read",
     "finance:write",
     "notifications:read",
+    "notifications:write",
     "profile:read",
+    "profile:write",
     "invitations:read",
+    "invitations:write",
 ]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 

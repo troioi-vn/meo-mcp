@@ -11,6 +11,8 @@ part of the end-user tool surface.
 ## Lifecycle
 
 - **Live** means implemented and accepted on the development MCP endpoint.
+- **Proposed** means the contract is cataloged for the active milestone but is
+  not available until its implementation, deployment, and acceptance finish.
 
 ## Capability matrix
 
@@ -144,7 +146,19 @@ part of the end-user tool surface.
 | `get_notification_preferences` | Live | Read per-event delivery preferences | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notification-preferences` | Read | Moderate; communication settings |
 | `get_my_profile` | Live | Read a narrowed self profile, locale, avatar, storage, and account state | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me` | Read | Critical; personal identity and account metadata |
 | `list_owner_weights` | Live | Page the caller's own body-weight history | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me/owner-weights` | Read | Critical; personal health data |
+| `get_owner_weight` | Proposed | Read one exact owner-weight record and its editable version | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me/owner-weights/{owner_weight_id}` | Read | Critical; personal health data |
 | `get_account_invitation_summary` | Live | Read sent onboarding invitations and lifecycle totals | `invitations:read` | `invitations:read` (legacy PAT: `read`) | `GET /api/invitations`; `GET /api/invitations/stats` | Read/aggregate | High; bearer codes and recipient identity |
+| `mark_notification_read` | Proposed | Mark one exact notification read without executing its actions | `notifications:read` + `notifications:write` | `notifications:read` + `notifications:write` (legacy PAT: `read` + `update`) | inbox preview; `PATCH /api/notifications/{notification_id}/read`; inbox verification | Update | Moderate; changes private activity state |
+| `mark_all_notifications_read` | Proposed | Mark the previewed unread set read only if its count is still current | `notifications:read` + `notifications:write` | `notifications:read` + `notifications:write` (legacy PAT: `read` + `update`) | inbox preview; `POST /api/notifications/mark-all-read`; count verification | Update | High; bulk activity-state change |
+| `update_notification_preference` | Proposed | Change one exact event type's delivery channels from an expected current state | `notifications:read` + `notifications:write` | `notifications:read` + `notifications:write` (legacy PAT: `read` + `update`) | preference preview; `PUT /api/notification-preferences`; preference verification | Update | High; changes whether communications are delivered |
+| `update_my_profile_name` | Proposed | Change only the caller's display name from a versioned profile preview | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `update`) | profile preview; `PUT /api/users/me`; profile verification | Update | High; changes personal identity presentation |
+| `upload_my_avatar_from_url` | Proposed | Replace the caller's avatar with one bounded public HTTPS image | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `update`) | guarded source `GET`; profile preview; multipart `POST /api/users/me/avatar`; profile verification | Update | High; replaces a personal image |
+| `delete_my_avatar` | Proposed | Permanently remove the exact previewed avatar | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `delete`) | profile preview; `DELETE /api/users/me/avatar`; profile verification | Delete | High; permanently removes a personal image |
+| `create_owner_weight` | Proposed | Record one dated body-weight measurement for the caller | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `create`) | duplicate-date guard; `POST /api/users/me/owner-weights`; detail verification | Create | Critical; creates personal health data |
+| `update_owner_weight` | Proposed | Correct one exact owner-weight record at a known version | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `update`) | detail preview; `PUT /api/users/me/owner-weights/{owner_weight_id}`; detail verification | Update | Critical; overwrites personal health data |
+| `delete_owner_weight` | Proposed | Delete one exact owner-weight record after date/value preview | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/users/me/owner-weights/{owner_weight_id}`; absence verification | Delete | Critical; permanently removes personal health data |
+| `create_account_invitation` | Proposed | Create a generic or email-targeted onboarding invitation with explicit expiry | `invitations:read` + `invitations:write` | `invitations:read` + `invitations:write` (legacy PAT: `read` + `create`) | invitation preview; `POST /api/invitations`; summary verification | Create | Critical; emits bearer account-registration material and may send email |
+| `revoke_account_invitation` | Proposed | Revoke one exact pending onboarding invitation at a known version | `invitations:read` + `invitations:write` | `invitations:read` + `invitations:write` (legacy PAT: `read` + `delete`) | summary preview; `DELETE /api/invitations/{invitation_id}`; summary verification | Delete | Critical; invalidates distributed bearer material |
 | `create_group` | Live | Create a named group with an explicit initial pet set | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | duplicate preview; `POST /api/groups`; detail verification | Create | High; creates shared access boundary |
 | `update_group` | Live | Rename one exact group from its current version | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `update`) | detail preview; `PUT /api/groups/{group_id}`; detail verification | Update | High; shared identity change |
 | `delete_group` | Live | Permanently delete one exact group after membership/pet preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/groups/{group_id}`; absence verification | Delete | Critical; destroys group and sharing state |
@@ -185,8 +199,11 @@ part of the end-user tool surface.
 | `finance:read` | View accessible ledgers, transactions, totals, configuration, pets, members, suggestions, and pending invitations | `finance:read` | Finance reads only |
 | `finance:write` | Create and manage ledgers, transactions, accounts, categories, members, pets, and ledger invitations | `finance:write` | Finance mutations only; tools pair it with `finance:read` |
 | `notifications:read` | View the caller's notification inbox, unread counts, available actions, and delivery preferences | `notifications:read` | Notification reads only |
+| `notifications:write` | Mark notifications read and change the caller's delivery preferences | `notifications:write` | Notification mutations only; tools pair it with `notifications:read` |
 | `profile:read` | View a narrowed self profile and the caller's own weight history | `profile:read` | Self-profile reads only |
+| `profile:write` | Change the caller's display name/avatar and manage their own weight history | `profile:write` | Safe self-profile mutations only; tools pair it with `profile:read` |
 | `invitations:read` | View onboarding invitations sent by the caller and their lifecycle totals | `invitations:read` | Account-invitation reads only |
+| `invitations:write` | Create and revoke onboarding invitations sent by the caller | `invitations:write` | Account-invitation mutations only; tools pair it with `invitations:read` |
 
 Scopes are independently requestable non-empty subsets. Dynamic registration
 defaults to the full advertised set, while authorization can request a narrow
@@ -775,6 +792,49 @@ Stable errors include the shared validation, idempotency, concurrency,
 authorization, inactive-invitation, and post-write-verification codes. Deletion
 and access changes use destructive annotations; create operations do not.
 
+## Phase 4B3 notification, profile, owner-weight, and account-invitation contract
+
+Phase 4B3 adds three independent write scopes. Mutation tools pair each write
+scope with its matching read scope so they can enforce a fresh preview and a
+post-write read. Every mutation requires an idempotency key; existing records
+also require exact expected state or the authority's current `updated_at`
+version.
+
+- `mark_notification_read` accepts only a stable notification ID returned by a
+  bounded inbox read and never executes an advertised notification action.
+  `mark_all_notifications_read` requires the caller's previewed unread bell
+  count; Meo rejects the write if a notification arrived or changed before the
+  atomic bulk update. The admin-only city-unapproval handler is the sole
+  registered notification action, so Phase 4B3 exposes no action-execution
+  tool.
+- `update_notification_preference` changes one explicit notification type. It
+  carries all three expected channel booleans and all three desired booleans;
+  Meo locks and compares the current row before updating it. This avoids a
+  stale agent overwriting a concurrent browser preference change.
+- `update_my_profile_name` changes only the display name. Email change,
+  password change, and account deletion remain outside MCP because they affect
+  authentication, verification, or account recovery. Avatar replacement uses
+  the same pinned-DNS, redirect-limited, public-HTTPS image fetch boundary as
+  other image-import tools and is limited further by Meo's avatar validator.
+  Avatar deletion compares the previewed URL before removing media.
+- `get_owner_weight` supplies the stable-ID/version read required before owner-
+  weight correction or deletion. Creates are unique per record date; an exact
+  idempotency-key replay returns the original record, while a distinct key for
+  the same date returns `duplicate_candidate`. Update/delete compare the exact
+  record version, and delete additionally compares its date and weight.
+- Account-invitation creation may be generic or target one normalized email and
+  may set a future expiry. Email-targeted creates detect an existing pending
+  target unless `allow_duplicate` explicitly records distinct intent. Generic
+  invitations have no recipient identity and therefore rely on idempotency
+  rather than a guessed duplicate match. Revocation requires a pending stable
+  invitation ID/version. Codes and invitation URLs may appear only in
+  successful authorized tool content, never logs or structured errors.
+
+Successful mutations verify the exact field/state change, stable returned ID,
+or target absence/revocation through the corresponding read scope. The three
+write scopes never authorize password changes, account deletion, notification
+actions, or another user's profile/weight/invitation data.
+
 ## Errors
 
 Every tool can return `scope_required`, `authorization_inactive`, or the common
@@ -784,7 +844,7 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 |------|-----------|---------|
 | `validation_error` | no | Locally validated input is missing, blank, out of range, or inconsistent |
 | `upstream_validation_failed` | no | Meo rejected the normalized request with `422`; upstream field text is not forwarded |
-| `duplicate_candidate` | no | Pet create found an exact existing name/species match; inspect stable IDs before deciding whether this is a distinct pet |
+| `duplicate_candidate` | no | A create matched an existing pet, group, ledger, owner-weight date, or pending invitation target; inspect stable IDs before deciding whether this is distinct intent |
 | `idempotency_conflict` | no | The idempotency key was reused for a different normalized write |
 | `active_placement_conflict` | no | The pet already has an active placement request of the requested type |
 | `upstream_conflict` | no | Meo rejected the write because the target's current domain state conflicts |
@@ -793,14 +853,14 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 | `post_write_verification_failed` | yes | Meo accepted the write but its stable target could not be read back safely |
 | `source_url_rejected` | no | A photo source URL or redirect is not public HTTPS on the permitted port |
 | `source_image_invalid` | no | A photo source has an unsupported MIME type, invalid declared size, or no usable body |
-| `source_image_too_large` | no | A streamed photo source exceeded the 10 MiB gateway limit |
+| `source_image_too_large` | no | A streamed image exceeded its tool limit (10 MiB photos, 5 MiB chat, or 2 MiB avatar) |
 | `source_fetch_failed` | yes | A validated public photo source could not be fetched safely |
 | `relationship_mismatch` | no | A fresh sharing read does not match the caller's exact expected role set |
 | `invitation_mismatch` | no | A fresh preview does not match the caller's exact expected pet or role |
 | `invitation_inactive` | no | The invitation is expired, revoked, declined, accepted, or otherwise unusable |
 | `last_owner_conflict` | no | The requested relationship change would leave the pet without an owner |
-| `target_mismatch` | no | A fresh read does not match the caller's explicit expected pet, helper, recipient, response, transfer, photo, or message target |
-| `target_not_in_bounded_history` | no | A message target is older than the newest 1,000 messages inspected by the guarded write |
+| `target_mismatch` | no | A fresh read does not match the caller's explicit expected pet, helper, recipient, response, transfer, photo, message, notification, preference, weight, or invitation target |
+| `target_not_in_bounded_history` | no | A notification is outside the newest 50 bell items or a message is older than the newest 1,000 messages inspected by the guarded write |
 
 Upstream `403` and `404` remain `upstream_forbidden` and
 `upstream_not_found`. No upstream response body is forwarded.

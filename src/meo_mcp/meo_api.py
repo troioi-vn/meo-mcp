@@ -4,7 +4,7 @@ import asyncio
 import ipaddress
 import re
 import socket
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -35,6 +35,7 @@ PLACEMENT_REQUEST_TYPES = {"permanent", "foster_free", "foster_paid", "pet_sitti
 INVITATION_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9]{64}$")
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
 PHOTO_REDIRECT_LIMIT = 3
+AVATAR_MAX_BYTES = 2 * 1024 * 1024
 PHOTO_MIME_EXTENSIONS = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -2849,6 +2850,414 @@ class MeoApi:
             },
         }
 
+    async def mark_notification_read(
+        self, notification_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(notification_id, "notification_id")
+        key = self._idempotency_key(idempotency_key)
+        inbox = await self.get_notification_inbox(limit=50)
+        target = next(
+            (
+                item
+                for item in inbox["notifications"]
+                if item.get("notification_id") == notification_id
+            ),
+            None,
+        )
+        if target is None:
+            self._error(
+                "target_not_in_bounded_history",
+                "The notification is not present in the newest 50 bell notifications.",
+                False,
+            )
+        delegated = await self._delegated_token("notifications:read", "notifications:write")
+        await self._request(
+            delegated,
+            "PATCH",
+            f"/api/notifications/{notification_id}/read",
+            json_data={},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_notification_inbox, 50, True)
+        after = next(
+            (
+                item
+                for item in verified["notifications"]
+                if item.get("notification_id") == notification_id
+            ),
+            None,
+        )
+        if after is not None and after.get("read_at") is None:
+            self._verification_error("The notification read receipt could not be verified.")
+        return {
+            "notification_id": notification_id,
+            "marked_read": True,
+            "unread_bell_count": verified["unread_bell_count"],
+            "verified": True,
+        }
+
+    async def mark_all_notifications_read(
+        self, expected_unread_count: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        if (
+            isinstance(expected_unread_count, bool)
+            or not isinstance(expected_unread_count, int)
+            or expected_unread_count < 0
+        ):
+            self._error(
+                "validation_error", "expected_unread_count must be a non-negative integer.", False
+            )
+        current = await self.get_notification_inbox(limit=50, include_notifications=False)
+        if current["unread_bell_count"] != expected_unread_count:
+            self._error(
+                "target_mismatch",
+                "The current unread notification count does not match the expected count.",
+                False,
+            )
+        delegated = await self._delegated_token("notifications:read", "notifications:write")
+        await self._request(
+            delegated,
+            "POST",
+            "/api/notifications/mark-all-read",
+            json_data={"expected_unread_count": expected_unread_count},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_notification_inbox, 50, False)
+        if verified["unread_bell_count"] != 0:
+            self._verification_error("The bulk notification read receipt could not be verified.")
+        return {
+            "marked_read_count": expected_unread_count,
+            "unread_bell_count": 0,
+            "verified": True,
+        }
+
+    async def update_notification_preference(
+        self,
+        notification_type: str,
+        expected_email_enabled: bool,
+        expected_in_app_enabled: bool,
+        expected_telegram_enabled: bool,
+        email_enabled: bool,
+        in_app_enabled: bool,
+        telegram_enabled: bool,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        notification_type = self._required_text(notification_type, "notification_type", 100)
+        current = await self.get_notification_preferences()
+        target = next(
+            (item for item in current["preferences"] if item.get("type") == notification_type),
+            None,
+        )
+        if target is None:
+            self._error("validation_error", "notification_type is not supported.", False)
+        expected = {
+            "email_enabled": expected_email_enabled,
+            "in_app_enabled": expected_in_app_enabled,
+            "telegram_enabled": expected_telegram_enabled,
+        }
+        if any(
+            not isinstance(value, bool)
+            for value in (*expected.values(), email_enabled, in_app_enabled, telegram_enabled)
+        ):
+            self._error("validation_error", "Notification channel values must be booleans.", False)
+        if any(target.get(field) is not value for field, value in expected.items()):
+            self._error(
+                "target_mismatch",
+                "The current notification delivery settings do not match the expected state.",
+                False,
+            )
+        delegated = await self._delegated_token("notifications:read", "notifications:write")
+        await self._request(
+            delegated,
+            "PUT",
+            "/api/notification-preferences",
+            json_data={
+                "preferences": [
+                    {
+                        "type": notification_type,
+                        **{f"expected_{key}": value for key, value in expected.items()},
+                        "email_enabled": email_enabled,
+                        "in_app_enabled": in_app_enabled,
+                        "telegram_enabled": telegram_enabled,
+                    }
+                ]
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_notification_preferences)
+        after = next(
+            (item for item in verified["preferences"] if item.get("type") == notification_type),
+            None,
+        )
+        desired = {
+            "email_enabled": email_enabled,
+            "in_app_enabled": in_app_enabled,
+            "telegram_enabled": telegram_enabled,
+        }
+        if after is None or any(after.get(field) is not value for field, value in desired.items()):
+            self._verification_error("The notification preference update could not be verified.")
+        return {"preference": after, "verified": True}
+
+    async def update_my_profile_name(
+        self, name: str, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        current = (await self.get_my_profile())["profile"]
+        self._require_version_available(current)
+        name = self._required_text(name, "name", 255)
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        await self._request(
+            delegated,
+            "PUT",
+            "/api/users/me",
+            json_data={
+                "name": name,
+                "email": current.get("email"),
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_my_profile)
+        if verified["profile"].get("name") != name:
+            self._verification_error("The profile name update could not be verified.")
+        return {"profile": verified["profile"], "verified": True}
+
+    async def upload_my_avatar_from_url(
+        self, source_url: str, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        current = (await self.get_my_profile())["profile"]
+        self._require_version_available(current)
+        filename, content, content_type = await self._fetch_public_image(source_url)
+        if len(content) > AVATAR_MAX_BYTES:
+            self._error(
+                "source_image_too_large",
+                "The avatar source exceeds Meo's 2 MiB limit.",
+                False,
+            )
+        if content_type not in {"image/jpeg", "image/png", "image/gif"}:
+            self._error(
+                "source_image_invalid",
+                "Meo avatars support JPEG, PNG, or GIF images.",
+                False,
+            )
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        await self._request(
+            delegated,
+            "POST",
+            "/api/users/me/avatar",
+            form_data={"base_version": self._version(base_version)},
+            files={"avatar": (filename, content, content_type)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_my_profile)
+        if not isinstance(verified["profile"].get("avatar_url"), str):
+            self._verification_error("The avatar replacement could not be verified.")
+        return {"profile": verified["profile"], "verified": True}
+
+    async def delete_my_avatar(
+        self, expected_avatar_url: str, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        current = (await self.get_my_profile())["profile"]
+        self._require_version_available(current)
+        expected_avatar_url = self._required_text(expected_avatar_url, "expected_avatar_url", 2048)
+        if current.get("avatar_url") != expected_avatar_url:
+            self._error("target_mismatch", "The current avatar does not match.", False)
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            "/api/users/me/avatar",
+            json_data={
+                "expected_avatar_url": expected_avatar_url,
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_my_profile)
+        if verified["profile"].get("avatar_url") is not None:
+            self._verification_error("The avatar deletion could not be verified.")
+        return {"avatar_deleted": True, "profile": verified["profile"], "verified": True}
+
+    async def get_owner_weight(self, owner_weight_id: int) -> dict[str, Any]:
+        self._positive(owner_weight_id, "owner_weight_id")
+        delegated = await self._delegated_token("profile:read")
+        item = self._object(
+            await self._get(delegated, f"/api/users/me/owner-weights/{owner_weight_id}")
+        )
+        return {"weight": self._owner_weight(item)}
+
+    async def create_owner_weight(
+        self, weight_kg: float, record_date: date, idempotency_key: str
+    ) -> dict[str, Any]:
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            "/api/users/me/owner-weights",
+            json_data={
+                "weight_kg": self._weight_value(weight_kg),
+                "record_date": record_date.isoformat(),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200, 201},
+        )
+        owner_weight_id = self._response_id(created)
+        verified = await self._verify(self.get_owner_weight, owner_weight_id)
+        return {"weight": verified["weight"], "verified": True}
+
+    async def update_owner_weight(
+        self,
+        owner_weight_id: int,
+        base_version: str,
+        idempotency_key: str,
+        weight_kg: float | None = None,
+        record_date: date | None = None,
+    ) -> dict[str, Any]:
+        current = (await self.get_owner_weight(owner_weight_id))["weight"]
+        self._require_version_available(current)
+        payload: dict[str, Any] = {}
+        if weight_kg is not None:
+            payload["weight_kg"] = self._weight_value(weight_kg)
+        if record_date is not None:
+            payload["record_date"] = record_date.isoformat()
+        self._require_changes(payload)
+        payload["base_version"] = self._version(base_version)
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/users/me/owner-weights/{owner_weight_id}",
+            json_data=payload,
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_owner_weight, owner_weight_id)
+        return {"weight": verified["weight"], "verified": True}
+
+    async def delete_owner_weight(
+        self,
+        owner_weight_id: int,
+        expected_weight_kg: float,
+        expected_record_date: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        current = (await self.get_owner_weight(owner_weight_id))["weight"]
+        self._require_version_available(current)
+        weight = self._weight_value(expected_weight_kg)
+        if (
+            current.get("weight_kg") != weight
+            or current.get("record_date") != expected_record_date.isoformat()
+        ):
+            self._error("target_mismatch", "The owner-weight target does not match.", False)
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/users/me/owner-weights/{owner_weight_id}",
+            json_data={
+                "expected_weight_kg": weight,
+                "expected_record_date": expected_record_date.isoformat(),
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200, 204},
+        )
+        await self._verify_absent(self.get_owner_weight, owner_weight_id)
+        return {"weight_id": owner_weight_id, "deleted": True, "verified": True}
+
+    async def create_account_invitation(
+        self,
+        idempotency_key: str,
+        email: str | None = None,
+        expires_at: datetime | None = None,
+        allow_duplicate: bool = False,
+    ) -> dict[str, Any]:
+        email = self._optional_text(email, "email", 255)
+        if email is not None and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            self._error("validation_error", "email must be a valid email address.", False)
+        payload: dict[str, Any] = {"allow_duplicate": allow_duplicate}
+        if email is not None:
+            payload["email"] = email.casefold()
+        if expires_at is not None:
+            if expires_at.tzinfo is None or expires_at <= datetime.now(UTC):
+                self._error(
+                    "validation_error",
+                    "expires_at must be a future timestamp with timezone.",
+                    False,
+                )
+            payload["expires_at"] = expires_at.isoformat()
+        delegated = await self._delegated_token("invitations:read", "invitations:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            "/api/invitations",
+            json_data=payload,
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200, 201},
+        )
+        invitation_id = self._response_id(created)
+        verified = await self._verify(self.get_account_invitation_summary)
+        invitation = next(
+            (
+                item
+                for item in verified["invitations"]
+                if item.get("invitation_id") == invitation_id
+            ),
+            None,
+        )
+        if invitation is None or invitation.get("status") != "pending":
+            self._verification_error("The account invitation could not be verified.")
+        return {"invitation": invitation, "counts": verified["counts"], "verified": True}
+
+    async def revoke_account_invitation(
+        self,
+        invitation_id: int,
+        expected_target_email: str | None,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(invitation_id, "invitation_id")
+        expected_target_email = self._optional_text(
+            expected_target_email, "expected_target_email", 255
+        )
+        current = await self.get_account_invitation_summary()
+        target = next(
+            (item for item in current["invitations"] if item.get("invitation_id") == invitation_id),
+            None,
+        )
+        if (
+            target is None
+            or target.get("status") != "pending"
+            or target.get("target_email") != expected_target_email
+        ):
+            self._error("target_mismatch", "The pending account invitation does not match.", False)
+        self._require_version_available(target)
+        delegated = await self._delegated_token("invitations:read", "invitations:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/invitations/{invitation_id}",
+            json_data={
+                "expected_target_email": expected_target_email,
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_account_invitation_summary)
+        after = next(
+            (
+                item
+                for item in verified["invitations"]
+                if item.get("invitation_id") == invitation_id
+            ),
+            None,
+        )
+        if after is None or after.get("status") != "revoked":
+            self._verification_error("The account invitation revocation could not be verified.")
+        return {"invitation": after, "counts": verified["counts"], "verified": True}
+
     async def create_placement_request(
         self,
         pet_id: int,
@@ -4226,6 +4635,34 @@ class MeoApi:
                     409,
                     {"existing_ledger_ids": existing_ledger_ids},
                 )
+            existing_owner_weight_ids = (
+                data.get("existing_owner_weight_ids") if isinstance(data, dict) else None
+            )
+            if isinstance(existing_owner_weight_ids, list) and all(
+                isinstance(value, int) and not isinstance(value, bool) and value > 0
+                for value in existing_owner_weight_ids
+            ):
+                self._error(
+                    "duplicate_candidate",
+                    "An owner weight record already exists for this date.",
+                    False,
+                    409,
+                    {"existing_owner_weight_ids": existing_owner_weight_ids},
+                )
+            existing_invitation_ids = (
+                data.get("existing_invitation_ids") if isinstance(data, dict) else None
+            )
+            if isinstance(existing_invitation_ids, list) and all(
+                isinstance(value, int) and not isinstance(value, bool) and value > 0
+                for value in existing_invitation_ids
+            ):
+                self._error(
+                    "duplicate_candidate",
+                    "A pending invitation already exists for this email.",
+                    False,
+                    409,
+                    {"existing_invitation_ids": existing_invitation_ids},
+                )
             if conflict_code == "active_placement_conflict":
                 self._error(
                     "active_placement_conflict",
@@ -5183,6 +5620,7 @@ class MeoApi:
                 "email_enabled",
                 "in_app_enabled",
                 "telegram_enabled",
+                "updated_at",
             )
         }
 
@@ -5210,10 +5648,13 @@ class MeoApi:
 
     @staticmethod
     def _owner_weight(item: dict[str, Any]) -> dict[str, Any]:
+        record_date = item.get("record_date")
+        if isinstance(record_date, str) and re.match(r"^\d{4}-\d{2}-\d{2}", record_date):
+            record_date = record_date[:10]
         return {
             "weight_id": item.get("id", item.get("weight_id")),
             "weight_kg": item.get("weight_kg"),
-            "record_date": item.get("record_date"),
+            "record_date": record_date,
             "notes": item.get("notes"),
             "version": item.get("updated_at", item.get("version")),
         }
@@ -5224,10 +5665,12 @@ class MeoApi:
         return {
             "invitation_id": item.get("id", item.get("invitation_id")),
             "code": item.get("code"),
+            "target_email": item.get("email"),
             "status": item.get("status"),
             "expires_at": item.get("expires_at"),
             "created_at": item.get("created_at"),
             "invitation_url": item.get("invitation_url"),
+            "version": item.get("updated_at", item.get("version")),
             "recipient": (
                 {
                     "user_id": recipient.get("id"),

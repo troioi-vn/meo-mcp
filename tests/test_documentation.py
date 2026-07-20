@@ -55,8 +55,11 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
         "finance:read",
         "finance:write",
         "notifications:read",
+        "notifications:write",
         "profile:read",
+        "profile:write",
         "invitations:read",
+        "invitations:write",
     ]
     assert "`list_pets`" in catalog
     assert "`pets:read`" in catalog
@@ -84,6 +87,10 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     assert "`get_notification_inbox`" in catalog
     assert "`get_my_profile`" in catalog
     assert "`get_account_invitation_summary`" in catalog
+    assert "`mark_all_notifications_read`" in catalog
+    assert "`update_my_profile_name`" in catalog
+    assert "`create_owner_weight`" in catalog
+    assert "`create_account_invitation`" in catalog
 
 
 def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:

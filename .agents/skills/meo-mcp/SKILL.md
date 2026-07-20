@@ -1,6 +1,6 @@
 ---
 name: meo-mcp
-description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet, health, habit, photo, microchip, sharing, placement, helper-profile, messaging, group, finance, notification, self-profile, and invitation tools with narrow read/write scopes, diagnosing structured failures, deploying safely, and adding semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, habits:read, sharing:read, placement:read, placement:write, helpers:read, helpers:write, messages:read, messages:write, groups:read, groups:write, finance:read, finance:write, notifications:read, profile:read, invitations:read, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
+description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet, health, habit, photo, microchip, sharing, placement, helper-profile, messaging, group, finance, notification, self-profile, owner-weight, and invitation tools with narrow read/write scopes, diagnosing structured failures, deploying safely, and adding semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, habits:read, sharing:read, placement:read, placement:write, helpers:read, helpers:write, messages:read, messages:write, groups:read, groups:write, finance:read, finance:write, notifications:read, notifications:write, profile:read, profile:write, invitations:read, invitations:write, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
 ---
 
 # Meo MCP gateway
@@ -54,6 +54,11 @@ Treat pet-sharing writes as high impact. Read the narrowed sharing state or
 invitation preview immediately before mutation, require exact expected targets,
 and verify the result. Invitation links are credentials: pass them only through
 the tool input, never reproduce them in chat, logs, screenshots, or reports.
+
+Treat profile, owner-weight, and account-invitation writes as sensitive. Keep
+email/password/account deletion outside the gateway, compare notification and
+profile state before mutation, and never reproduce invitation codes, URLs,
+personal weight values, or notification bodies in acceptance reports.
 
 ## Diagnose safely
 

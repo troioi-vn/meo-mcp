@@ -86,7 +86,7 @@ Current tool error codes:
 | `scope_required` | no | — | Reauthorize with the tool's required scope |
 | `authorization_inactive` | no | — | Reconnect the Meo account |
 | `validation_error` | no | — | Correct the tool input before retrying |
-| `duplicate_candidate` | no | `409` | Inspect the existing stable pet IDs; create only if this is a distinct pet intent |
+| `duplicate_candidate` | no | `409` | Inspect the returned stable pet/group/ledger/weight/invitation IDs; create only for a distinct intent |
 | `idempotency_conflict` | no | `409` | Use the original payload or a new key for a genuinely new intent |
 | `active_placement_conflict` | no | `409` | Reuse/manage the existing active placement request or choose another request type |
 | `upstream_conflict` | no | `409` | Re-read the target; its domain state rejects this write |
@@ -95,14 +95,14 @@ Current tool error codes:
 | `post_write_verification_failed` | yes | — | The write may have succeeded; read the stable target before any retry |
 | `source_url_rejected` | no | — | Use a public HTTPS image URL on port 443 without credentials or fragments |
 | `source_image_invalid` | no | — | Supply a non-empty JPEG, PNG, WebP, or GIF response |
-| `source_image_too_large` | no | — | Supply an image no larger than 10 MiB for photos or 5 MiB for chat images |
+| `source_image_too_large` | no | — | Supply an image no larger than 10 MiB for photos, 5 MiB for chat images, or 2 MiB for an avatar |
 | `source_fetch_failed` | yes | — | Retry the validated source later or choose another public source |
 | `relationship_mismatch` | no | — | Re-read sharing state; the caller's expected current roles no longer match |
 | `invitation_mismatch` | no | — | Stop; the fresh invitation preview does not match the expected pet or role |
 | `invitation_inactive` | no | `410` | Obtain a current invitation; this bearer link is no longer usable |
 | `last_owner_conflict` | no | `409` | Keep or assign another owner before changing/removing/leaving this relationship |
 | `target_mismatch` | no | — | Stop; a fresh read does not match the explicit target supplied to the write |
-| `target_not_in_bounded_history` | no | — | Locate the message through the product UI; the guarded tool will not scan beyond 1,000 messages |
+| `target_not_in_bounded_history` | no | — | Refresh the bounded notification/message read or locate older message history in the product UI |
 | `upstream_unavailable` | yes | — | Retry later; no HTTP response was received |
 | `upstream_unauthorized` | no | `401` | Reconnect; delegated authorization was rejected |
 | `upstream_forbidden` | no | `403` | Stop or change the request; Meo denied access |

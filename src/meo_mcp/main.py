@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
@@ -1624,6 +1624,143 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def get_account_invitation_summary() -> CallToolResult:
         """Read sent onboarding invitations and their lifecycle totals."""
         return await call(api.get_account_invitation_summary)
+
+    @server.tool(annotations=update_annotations)
+    async def mark_notification_read(notification_id: int, idempotency_key: str) -> CallToolResult:
+        """Mark one exact notification read without executing any action."""
+        return await call(api.mark_notification_read, notification_id, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def mark_all_notifications_read(
+        expected_unread_count: int, idempotency_key: str
+    ) -> CallToolResult:
+        """Mark only the previewed unread notification set read."""
+        return await call(api.mark_all_notifications_read, expected_unread_count, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def update_notification_preference(
+        notification_type: str,
+        expected_email_enabled: bool,
+        expected_in_app_enabled: bool,
+        expected_telegram_enabled: bool,
+        email_enabled: bool,
+        in_app_enabled: bool,
+        telegram_enabled: bool,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Change one notification type from an exact current delivery state."""
+        return await call(
+            api.update_notification_preference,
+            notification_type,
+            expected_email_enabled,
+            expected_in_app_enabled,
+            expected_telegram_enabled,
+            email_enabled,
+            in_app_enabled,
+            telegram_enabled,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_my_profile_name(
+        name: str, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Change only the caller's display name from a versioned profile read."""
+        return await call(api.update_my_profile_name, name, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def upload_my_avatar_from_url(
+        source_url: str, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Replace the caller's avatar from one bounded public HTTPS image."""
+        return await call(api.upload_my_avatar_from_url, source_url, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def delete_my_avatar(
+        expected_avatar_url: str, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Permanently delete the exact avatar from a versioned profile read."""
+        return await call(api.delete_my_avatar, expected_avatar_url, base_version, idempotency_key)
+
+    @server.tool(annotations=read_annotations)
+    async def get_owner_weight(owner_weight_id: int) -> CallToolResult:
+        """Read one exact owner-weight record and its editable version."""
+        return await call(api.get_owner_weight, owner_weight_id)
+
+    @server.tool(annotations=create_annotations)
+    async def create_owner_weight(
+        weight_kg: float, record_date: date, idempotency_key: str
+    ) -> CallToolResult:
+        """Record one dated body-weight measurement for the caller."""
+        return await call(api.create_owner_weight, weight_kg, record_date, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def update_owner_weight(
+        owner_weight_id: int,
+        base_version: str,
+        idempotency_key: str,
+        weight_kg: float | None = None,
+        record_date: date | None = None,
+    ) -> CallToolResult:
+        """Correct one exact owner-weight record at a known version."""
+        return await call(
+            api.update_owner_weight,
+            owner_weight_id,
+            base_version,
+            idempotency_key,
+            weight_kg,
+            record_date,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_owner_weight(
+        owner_weight_id: int,
+        expected_weight_kg: float,
+        expected_record_date: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete one exact owner-weight record after date and value preview."""
+        return await call(
+            api.delete_owner_weight,
+            owner_weight_id,
+            expected_weight_kg,
+            expected_record_date,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def create_account_invitation(
+        idempotency_key: str,
+        email: str | None = None,
+        expires_at: datetime | None = None,
+        allow_duplicate: bool = False,
+    ) -> CallToolResult:
+        """Create and verify one generic or email-targeted onboarding invitation."""
+        return await call(
+            api.create_account_invitation,
+            idempotency_key,
+            email,
+            expires_at,
+            allow_duplicate,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def revoke_account_invitation(
+        invitation_id: int,
+        expected_target_email: str | None,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Revoke one exact pending onboarding invitation at a known version."""
+        return await call(
+            api.revoke_account_invitation,
+            invitation_id,
+            expected_target_email,
+            base_version,
+            idempotency_key,
+        )
 
     @server.tool(annotations=create_annotations)
     async def create_placement_request(
