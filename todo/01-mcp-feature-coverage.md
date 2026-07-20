@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A, 1B, 2A, 2B, and 3A complete; Phase 3B is next)
+Status: in progress (Phases 1A, 1B, 2A, 2B, 3A, and 3B complete; Phase 4 is next)
 
 ## Goal
 
@@ -131,14 +131,14 @@ Meo pipeline `#313` deployed `3a78d580`; gateway pipeline `#25` deployed
 - [x] Phase 3A: chat, message, and unread-count reads without implicit read receipts
 - [x] Phase 3A: independent read scopes, Meo abilities, tests, deployment, and
       real-client smoke
-- [ ] Phase 3B: placement request/response/transfer/finalization semantic writes
-- [ ] Phase 3B: own helper-profile lifecycle and photo writes
-- [ ] Phase 3B: direct placement chat, message, explicit mark-read, own-message
+- [x] Phase 3B: placement request/response/transfer/finalization semantic writes
+- [x] Phase 3B: own helper-profile lifecycle and photo writes
+- [x] Phase 3B: direct placement chat, message, explicit mark-read, own-message
       delete, and leave-chat writes
-- [ ] Phase 3B: treat messaging and placement as high-impact: require explicit targets,
+- [x] Phase 3B: treat messaging and placement as high-impact: require explicit targets,
       idempotency where applicable, read/preview before write, and post-write verification;
       tool-description confirmation language is not an enforcement mechanism
-- [ ] Phase 3B: narrow write scopes, Meo abilities, tests, and development smoke
+- [x] Phase 3B: narrow write scopes, Meo abilities, tests, and development smoke
 
 Phase 3A development acceptance on 2026-07-20 used a fresh Codex thirteen-scope
 grant and discovered all 62 tools. It exercised placement browsing, public and
@@ -147,6 +147,17 @@ page, and unread count. Only aggregate counts and schema-presence flags were
 retained; no profile, contact, address, or message content was recorded. Meo
 pipeline `#314` deployed `432fb390`; gateway pipeline `#27` deployed
 `5e3b71b`.
+
+Phase 3B development acceptance on 2026-07-20 used a fresh sixteen-scope OAuth
+grant and discovered all 86 tools. A real placement create against an already
+active request proved the stable `active_placement_conflict` contract without
+creating an artifact. A temporary private helper profile completed verified
+create, update, delete, and exact-replay checks with cleanup. One existing chat
+completed an explicit mark-read and exact replay; no message was sent and no
+message content was retained. Both existing GPT connector environments remained
+healthy and able to reach Meo. Meo pipelines `#315` through `#317` deployed the
+Phase 3B authority and conflict-contract fixes; gateway pipelines `#29` and `#30`
+deployed the tool surface and matching error translation.
 
 ## Phase 4 — Groups, finance, notifications, profile
 
