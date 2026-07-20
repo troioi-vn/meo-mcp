@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A and 1B complete; Phase 2 is next)
+Status: in progress (Phases 1A, 1B, and 2A complete; Phase 2B is next)
 
 ## Goal
 
@@ -100,12 +100,21 @@ authentication gap ahead of Meo's idempotency middleware.
 
 ## Phase 2 — Remaining pet-care
 
-- [ ] Habits (list, entries by date, heatmap as read; create/update entries as write)
-- [ ] Pet photos (upload strategy: URL/metadata first; binary passthrough only if needed)
-- [ ] Microchips (CRUD as Meo allows)
-- [ ] Pet user relationships / leave / invitations as a separate high-impact milestone
-- [ ] Scopes + Meo abilities for each new write surface
-- [ ] Tests + development-endpoint smoke
+- [x] Phase 2A: habits (list, entries by date, heatmap, configuration and lifecycle writes)
+- [x] Phase 2A: pet photos (guarded public-URL upload, list, primary selection, delete)
+- [x] Phase 2A: microchips (CRUD while preserving linked finance records on delete)
+- [x] Phase 2A: narrow scopes, Meo abilities, tests, deployment, and real-client smoke
+- [ ] Phase 2B: pet user relationships / leave / invitations as a separate high-impact milestone
+- [ ] Phase 2B: narrow scopes, Meo abilities, tests, deployment, and real-client smoke
+
+Phase 2A development acceptance on 2026-07-20 used a fresh Codex eight-scope
+grant and discovered all 38 tools. Habit acceptance verified exact create replay,
+day entry and heatmap reads, update, stale-version conflict, archive, restore,
+delete, and cleanup. Photo acceptance imported a bounded public PNG, verified
+primary selection and deletion, and left no photo artifact. Microchip acceptance
+verified create/update/delete, absence of a linked finance transaction, the
+preserve-finance delete path, and cleanup. Meo pipeline `#312` deployed
+`74030ffd`; gateway pipeline `#23` deployed `799e76d`.
 
 ## Phase 3 — Placement, helpers, messaging
 
