@@ -119,7 +119,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         "Meo Mai Moi",
         instructions=(
             "Read and safely update Meo Mai Moi pets, health history, habits, photos, "
-            "microchips, and pet sharing. "
+            "microchips, pet sharing, placement opportunities, helper profiles, and messages. "
             "Resolve names to stable IDs, read targets before updates, preserve the returned "
             "version, and reuse an idempotency key only for an exact write retry."
         ),
@@ -827,6 +827,92 @@ def create_app(settings: Settings | None = None) -> Starlette:
             expected_relationship_types,
             idempotency_key,
         )
+
+    @server.tool(annotations=read_annotations)
+    async def list_placement_opportunities(
+        request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]
+        | None = None,
+        country: str | None = None,
+        city: str | None = None,
+        pet_type_id: int | None = None,
+    ) -> CallToolResult:
+        """Find open placement opportunities using optional care and location filters."""
+        return await call(
+            api.list_placement_opportunities, request_type, country, city, pet_type_id
+        )
+
+    @server.tool(annotations=read_annotations)
+    async def get_placement_request(placement_request_id: int) -> CallToolResult:
+        """Read one placement request and the authenticated viewer's role and actions."""
+        return await call(api.get_placement_request, placement_request_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_placement_responses(placement_request_id: int) -> CallToolResult:
+        """List responses for a placement request owned by the authenticated user."""
+        return await call(api.list_placement_responses, placement_request_id)
+
+    @server.tool(annotations=read_annotations)
+    async def search_helper_profiles(
+        country: str | None = None,
+        city: str | None = None,
+        request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]
+        | None = None,
+        pet_type_id: int | None = None,
+        search: str | None = None,
+    ) -> CallToolResult:
+        """Search approved public helper profiles without private contact or address fields."""
+        return await call(
+            api.search_helper_profiles,
+            country,
+            city,
+            request_type,
+            pet_type_id,
+            search,
+        )
+
+    @server.tool(annotations=read_annotations)
+    async def get_public_helper_profile(helper_profile_id: int) -> CallToolResult:
+        """Read one approved public helper profile without private contact details."""
+        return await call(api.get_public_helper_profile, helper_profile_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_my_helper_profiles() -> CallToolResult:
+        """List helper profiles visible to the authenticated user, including own private fields."""
+        return await call(api.list_my_helper_profiles)
+
+    @server.tool(annotations=read_annotations)
+    async def get_helper_profile(helper_profile_id: int) -> CallToolResult:
+        """Read one helper profile visible to the authenticated user."""
+        return await call(api.get_helper_profile, helper_profile_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_helper_location_options(
+        country: str | None = None, search: str | None = None
+    ) -> CallToolResult:
+        """List countries or search cities for helper-profile and placement filtering."""
+        return await call(api.list_helper_location_options, country, search)
+
+    @server.tool(annotations=read_annotations)
+    async def list_chats() -> CallToolResult:
+        """List the authenticated user's chats with narrowed participants and unread counts."""
+        return await call(api.list_chats)
+
+    @server.tool(annotations=read_annotations)
+    async def get_chat(chat_id: int) -> CallToolResult:
+        """Read one explicit chat visible to the authenticated user."""
+        return await call(api.get_chat, chat_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_chat_messages(
+        chat_id: int, cursor: str | None = None, limit: int = 50
+    ) -> CallToolResult:
+        """List messages without creating a read receipt; paginate with the returned cursor."""
+        return await call(api.list_chat_messages, chat_id, cursor, limit)
+
+    @server.tool(annotations=read_annotations)
+    async def get_unread_message_count() -> CallToolResult:
+        """Get the authenticated user's total unread message count."""
+        return await call(api.get_unread_message_count)
 
     async def health(_: Request) -> Response:
         return JSONResponse({"status": "ok"})

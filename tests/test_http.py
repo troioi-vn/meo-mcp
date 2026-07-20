@@ -190,12 +190,25 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "accept_pet_invitation",
         "decline_pet_invitation",
         "leave_shared_pet",
+        "list_placement_opportunities",
+        "get_placement_request",
+        "list_placement_responses",
+        "search_helper_profiles",
+        "get_public_helper_profile",
+        "list_my_helper_profiles",
+        "get_helper_profile",
+        "list_helper_location_options",
+        "list_chats",
+        "get_chat",
+        "list_chat_messages",
+        "get_unread_message_count",
     ]
     assert tools.json()["result"]["tools"][0]["annotations"]["readOnlyHint"] is True
     by_name = {tool["name"]: tool for tool in tools.json()["result"]["tools"]}
     assert by_name["create_pet"]["annotations"]["destructiveHint"] is False
     assert by_name["update_pet"]["annotations"]["destructiveHint"] is True
     assert by_name["list_habits"]["annotations"]["readOnlyHint"] is True
+    assert by_name["list_chat_messages"]["annotations"]["readOnlyHint"] is True
     assert by_name["create_habit"]["annotations"]["destructiveHint"] is False
     assert by_name["delete_habit"]["annotations"]["destructiveHint"] is True
     assert by_name["save_habit_day_entries"]["inputSchema"]["$defs"]["HabitEntryInput"][

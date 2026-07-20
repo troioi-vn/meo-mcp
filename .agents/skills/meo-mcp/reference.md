@@ -32,6 +32,9 @@ contributors can use local values derived from `.env.example`.
 | Microchips: list/detail/add/update/delete | explicit pet/record IDs, idempotency key, version for update/delete | narrowed record or verified absence | `microchips:read microchips:write` | matching abilities | microchip endpoints | read/create/update/delete | Moderate to high |
 | Pet-sharing reads: state/suggestions/invitations/preview | explicit pet ID or private invitation input | narrowed collaborators, candidates, or invitation preview | `sharing:read` | `sharing:read` | narrowed sharing and invitation endpoints | read-only | High |
 | Pet-sharing writes: collaborators/invitations/accept/decline/leave | exact stable targets and expectations, idempotency key, current version | verified sharing/invitation state or absence | `sharing:read sharing:write` | matching abilities | sharing mutation and verification endpoints | create/update/delete | High |
+| Placement reads: opportunities/request/viewer context/responses | filters or explicit request ID | narrowed public or role-shaped placement state | `placement:read` | `placement:read` | placement list/detail/context/response endpoints | read-only | High |
+| Helper reads: public search/detail, visible private profiles, locations | filters or explicit profile ID | privacy-shaped helper profiles or reference options | `helpers:read` | `helpers:read` | helper profile and country/city endpoints | read-only | High |
+| Messaging reads: chats/detail/messages/unread | explicit chat ID and optional cursor | narrowed private chat/message state without read receipt | `messages:read` | `messages:read` | messaging read endpoints | read-only | Critical |
 
 Consult the canonical catalog for exact schemas and choose the narrowest
 non-empty scope subset needed. Write scopes are paired with the corresponding

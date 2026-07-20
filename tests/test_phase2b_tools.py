@@ -357,4 +357,4 @@ def test_http_transport_loggers_do_not_emit_invitation_urls() -> None:
 
 
 def test_phase2b_scopes_are_advertised_last() -> None:
-    assert ALLOWED_SCOPES[-2:] == ["sharing:read", "sharing:write"]
+    assert ALLOWED_SCOPES[8:10] == ["sharing:read", "sharing:write"]

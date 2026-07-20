@@ -66,6 +66,18 @@ part of the end-user tool surface.
 | `accept_pet_invitation` | Live | Accept a freshly previewed pet invitation whose expected pet/role match | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `create`) | body-token preview; `POST /api/mcp/resource-invitations/accept`; verification sharing read | Create | High; grants the caller durable pet access |
 | `decline_pet_invitation` | Live | Decline a freshly previewed pet invitation whose expected pet/role match | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `update`) | body-token preview; `POST /api/mcp/resource-invitations/decline`; verification preview | Update | High; permanently consumes the invitation |
 | `leave_shared_pet` | Live | End all caller relationships with an explicit pet after a versioned read | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `delete`) | sharing read; `POST /api/pets/{pet_id}/leave`; post-write permission verification | Delete | High; removes the caller's own access and may revoke issued invites |
+| `list_placement_opportunities` | Proposed (Phase 3A) | Browse open placement requests through narrowed pet/request summaries | `placement:read` | `placement:read` (legacy PAT: `read`) | `GET /api/pets/placement-requests` | Read | High; public rehoming/foster intent and approximate location |
+| `get_placement_request` | Proposed (Phase 3A) | Read one placement request plus the caller's role and currently allowed actions | `placement:read` | `placement:read` (legacy PAT: `read`) | `GET /api/placement-requests/{placement_request_id}`; authenticated `GET .../me` | Read/aggregate | High; role-shaped placement and handover context |
+| `list_placement_responses` | Proposed (Phase 3A) | Let the request owner review the latest response from each helper profile | `placement:read` | `placement:read` (legacy PAT: `read`) | request/detail preflight; `GET /api/placement-requests/{placement_request_id}/responses` | Read | High; helper identity, offer text, and lifecycle state |
+| `search_helper_profiles` | Proposed (Phase 3A) | Browse approved public helpers using explicit country/city/service/pet filters | `helpers:read` | `helpers:read` (legacy PAT: `read`) | `GET /api/helpers` | Read | High; public helper identity, experience, location, and home context |
+| `get_public_helper_profile` | Proposed (Phase 3A) | Read one approved public helper profile without private contact fields | `helpers:read` | `helpers:read` (legacy PAT: `read`) | `GET /api/helpers/{helper_profile_id}` | Read | High; public helper profile and photos |
+| `list_my_helper_profiles` | Proposed (Phase 3A) | List the caller's profiles and profiles visible through placement responses | `helpers:read` | `helpers:read` (legacy PAT: `read`) | `GET /api/helper-profiles` | Read | High; may include private contact and address data |
+| `get_helper_profile` | Proposed (Phase 3A) | Read one explicitly visible full helper profile for management/review | `helpers:read` | `helpers:read` (legacy PAT: `read`) | `GET /api/helper-profiles/{helper_profile_id}` | Read | High; private contact, address, placement, and photo data |
+| `list_helper_location_options` | Proposed (Phase 3A) | Resolve stable country codes and city IDs before helper-profile writes | `helpers:read` | `helpers:read` (legacy PAT: `read`) | `GET /api/countries`; optional `GET /api/cities?country=...&search=...` | Read | Low; reference data |
+| `list_chats` | Proposed (Phase 3A) | List the caller's active direct chats with last-message and unread summaries | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/chats` | Read | High; private correspondence metadata and preview text |
+| `get_chat` | Proposed (Phase 3A) | Read participants and placement context for one explicit chat | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/chats/{chat_id}` | Read | High; private participant and context metadata |
+| `list_chat_messages` | Proposed (Phase 3A) | Page through one explicit chat without changing read receipts | `messages:read` | `messages:read` (legacy PAT: `read`) | side-effect-free `GET /api/msg/chats/{chat_id}/messages` | Read | Critical; private message bodies and image URLs |
+| `get_unread_message_count` | Proposed (Phase 3A) | Count unread messages without marking any chat read | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/unread-count` | Read | Moderate; private activity metadata |
 
 ## Scope model
 
@@ -81,6 +93,9 @@ part of the end-user tool surface.
 | `microchips:write` | Add, correct, and delete microchip records for pets the user may manage | `microchips:write` | Microchip mutations; always paired with `microchips:read` by these tools |
 | `sharing:read` | View pet collaborators, roles, suggestions, and invitation previews/links | `sharing:read` | Pet sharing reads |
 | `sharing:write` | Grant, change, revoke, accept, decline, or leave pet access | `sharing:write` | Pet sharing mutations; always paired with `sharing:read` by these tools |
+| `placement:read` | View open placement opportunities and role-shaped request/response/handover state | `placement:read` | Placement request, response, and viewer-context reads |
+| `helpers:read` | Browse public helper profiles and view profiles the caller may manage or review | `helpers:read` | Public/private helper reads and location options |
+| `messages:read` | View the caller's chats, private messages, and unread counts | `messages:read` | Messaging reads without changing read receipts |
 
 Scopes are independently requestable non-empty subsets. Dynamic registration
 defaults to the full advertised set, while authorization can request a narrow
@@ -457,6 +472,59 @@ structured-error logs. Do not pass them in query strings or return them from
 preview, accept, or decline. The gateway permits exact idempotency replay after
 a target becomes inaccessible or disappears by allowing Meo's idempotency
 middleware to resolve the stable key before a fresh-target read is required.
+
+## Phase 3A placement, helper, and messaging reads
+
+Phase 3 ships read parity as a separately deployed checkpoint before any new
+write grant. Its three read scopes are independent; placement access does not
+grant helper-profile or correspondence access.
+
+- `PlacementOpportunity` contains a narrowed pet snapshot (`pet_id`, name,
+  species, public photo, city/country) and its open requests as
+  `placement_request_id`, `request_type`, `status`, notes/translation,
+  start/end/expiry dates, and response count. `list_placement_opportunities`
+  accepts optional `request_type`, two-letter `country`, `city`, and positive
+  `pet_type_id` filters and returns matching summaries only.
+- `get_placement_request` requires positive `placement_request_id`. It returns
+  the narrowed request plus caller `viewer_role`, `my_response`, `my_transfer`,
+  server-derived `available_actions`, and nullable `chat_id`. Public-only
+  fields never gain private response or transfer data through gateway merging.
+- `list_placement_responses` requires positive `placement_request_id`, verifies
+  fresh owner context, and returns only the latest response per helper profile.
+  Each response is narrowed to stable response/profile/user IDs, display name,
+  status, message, timestamps, public helper summary, and nullable transfer ID,
+  status, and version. Contact details are excluded from this tool.
+- `PublicHelperProfile` contains stable profile/user IDs, display name,
+  country/state/cities, experience/translation, offer, household flags,
+  supported placement types/pet types, and public photos. It excludes address,
+  postal code, phone number, contact methods, moderation fields, and placement
+  history. Search inputs map exactly to Meo's public filters.
+- `PrivateHelperProfile` adds owner-visible address, postal code, phone,
+  normalized contact methods, approval/status values, lifecycle timestamps,
+  and nullable version. `list_my_helper_profiles` and `get_helper_profile`
+  preserve Meo visibility checks and never pass arbitrary related records.
+- `list_helper_location_options` takes optional uppercase two-letter `country`
+  and optional search (only with a country). Without a country it returns
+  narrowed country code/name/phone-prefix options; with one it returns stable
+  city IDs and localized names.
+- `Chat` contains stable chat/context IDs, type, participants narrowed to ID,
+  display name and avatar, last-message ID/type/safe content preview/timestamp,
+  unread count, and nullable version. Email addresses and role internals are
+  excluded. Only currently active participant chats are returned.
+- `ChatMessage` contains stable message/chat/sender IDs, sender display name and
+  avatar, type, content, `is_mine`, created timestamp, and nullable version.
+  `list_chat_messages` requires positive `chat_id`, optional ISO cursor, and
+  limit 1–100; it returns `has_more`, nullable next cursor, and counterparty
+  read timestamp. Listing never updates `last_read_at`; that mutation belongs
+  to the explicit Phase 3B mark-read tool.
+- `get_unread_message_count` returns one non-negative integer and has no side
+  effect.
+
+The legacy `/api/placement-requests/{id}/confirm` and `/reject` controllers are
+not tool dependencies because they contain no enforced state transition. The
+actual user-facing acceptance, transfer confirmation/rejection/cancellation,
+and temporary-placement finalization flows will be modeled as explicit,
+versioned semantic writes in Phase 3B.
 
 ## Errors
 

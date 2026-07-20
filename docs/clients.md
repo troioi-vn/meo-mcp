@@ -56,6 +56,11 @@ Request only `pets:read` when the client needs pet profiles but not health
 history. OAuth accepts either narrow scope or the documented combination, and
 each tool still enforces its own required scope.
 
+Placement, helper-profile, and messaging inspection use independent
+`placement:read`, `helpers:read`, and `messages:read` scopes. Message reads can
+contain private correspondence but do not update read receipts. Request only
+the domains the client needs.
+
 Keep the read-only command above for ordinary inspection. Request
 `pets:write` together with `pets:read`, or `health:write` together with
 `health:read`, only for an intended write workflow. Habits similarly pair

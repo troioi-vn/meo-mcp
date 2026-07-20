@@ -31,6 +31,7 @@ HABIT_VALUE_TYPES = {"yes_no", "integer_scale"}
 HABIT_SUMMARY_MODES = {"average_scored_pets", "average_all_pets", "sum"}
 SHARING_ROLES = {"owner", "editor", "viewer"}
 RELATIONSHIP_TYPES = SHARING_ROLES | {"foster", "sitter"}
+PLACEMENT_REQUEST_TYPES = {"permanent", "foster_free", "foster_paid", "pet_sitting"}
 INVITATION_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9]{64}$")
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
 PHOTO_REDIRECT_LIMIT = 3
@@ -1237,6 +1238,189 @@ class MeoApi:
             self._verification_error("The caller still has an active pet relationship.")
         return {"pet_id": pet_id, "left": True, "verified": True}
 
+    async def list_placement_opportunities(
+        self,
+        request_type: str | None = None,
+        country: str | None = None,
+        city: str | None = None,
+        pet_type_id: int | None = None,
+    ) -> dict[str, Any]:
+        request_type = self._placement_request_type(request_type, optional=True)
+        country = self._country_code(country, optional=True)
+        city = self._optional_text(city, "city", 255)
+        if pet_type_id is not None:
+            self._positive(pet_type_id, "pet_type_id")
+        delegated = await self._delegated_token("placement:read")
+        payload = await self._get(delegated, "/api/pets/placement-requests")
+        opportunities = [self._placement_opportunity(item) for item in self._items(payload)]
+        matches = []
+        for item in opportunities:
+            requests = [
+                request
+                for request in item["requests"]
+                if request_type is None or request.get("request_type") == request_type
+            ]
+            if not requests:
+                continue
+            if country is not None and str(item.get("country") or "").upper() != country:
+                continue
+            if city is not None and city.casefold() not in str(item.get("city") or "").casefold():
+                continue
+            if pet_type_id is not None and item.get("pet_type_id") != pet_type_id:
+                continue
+            matches.append({**item, "requests": requests})
+        return {"opportunities": matches}
+
+    async def get_placement_request(self, placement_request_id: int) -> dict[str, Any]:
+        self._positive(placement_request_id, "placement_request_id")
+        delegated = await self._delegated_token("placement:read")
+        request_payload, context_payload = await asyncio.gather(
+            self._get(delegated, f"/api/placement-requests/{placement_request_id}"),
+            self._get(delegated, f"/api/placement-requests/{placement_request_id}/me"),
+        )
+        return {
+            "placement_request": self._placement_request(self._object(request_payload)),
+            "viewer_context": self._placement_viewer_context(self._object(context_payload)),
+        }
+
+    async def list_placement_responses(self, placement_request_id: int) -> dict[str, Any]:
+        current = await self.get_placement_request(placement_request_id)
+        if current["viewer_context"].get("viewer_role") != "owner":
+            self._error(
+                "upstream_forbidden",
+                "Only the placement request owner can review all responses.",
+                False,
+                403,
+            )
+        delegated = await self._delegated_token("placement:read")
+        payload = await self._get(
+            delegated, f"/api/placement-requests/{placement_request_id}/responses"
+        )
+        return {
+            "placement_request": current["placement_request"],
+            "responses": [self._placement_response(item) for item in self._items(payload)],
+        }
+
+    async def search_helper_profiles(
+        self,
+        country: str | None = None,
+        city: str | None = None,
+        request_type: str | None = None,
+        pet_type_id: int | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
+        country = self._country_code(country, optional=True)
+        city = self._optional_text(city, "city", 255)
+        request_type = self._placement_request_type(request_type, optional=True)
+        search = self._optional_text(search, "search", 255)
+        if pet_type_id is not None:
+            self._positive(pet_type_id, "pet_type_id")
+        params = {
+            key: value
+            for key, value in {
+                "country": country,
+                "city": city,
+                "request_type": request_type,
+                "pet_type_id": pet_type_id,
+                "search": search,
+            }.items()
+            if value is not None
+        }
+        delegated = await self._delegated_token("helpers:read")
+        payload = await self._get(delegated, "/api/helpers", params)
+        return {
+            "helper_profiles": [self._public_helper_profile(item) for item in self._items(payload)]
+        }
+
+    async def get_public_helper_profile(self, helper_profile_id: int) -> dict[str, Any]:
+        self._positive(helper_profile_id, "helper_profile_id")
+        delegated = await self._delegated_token("helpers:read")
+        payload = await self._get(delegated, f"/api/helpers/{helper_profile_id}")
+        return {"helper_profile": self._public_helper_profile(self._object(payload))}
+
+    async def list_my_helper_profiles(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("helpers:read")
+        payload = await self._get(delegated, "/api/helper-profiles")
+        return {
+            "helper_profiles": [self._private_helper_profile(item) for item in self._items(payload)]
+        }
+
+    async def get_helper_profile(self, helper_profile_id: int) -> dict[str, Any]:
+        self._positive(helper_profile_id, "helper_profile_id")
+        delegated = await self._delegated_token("helpers:read")
+        payload = await self._get(delegated, f"/api/helper-profiles/{helper_profile_id}")
+        return {"helper_profile": self._private_helper_profile(self._object(payload))}
+
+    async def list_helper_location_options(
+        self, country: str | None = None, search: str | None = None
+    ) -> dict[str, Any]:
+        country = self._country_code(country, optional=True)
+        search = self._optional_text(search, "search", 50)
+        if search is not None and country is None:
+            self._error("validation_error", "search requires country.", False)
+        delegated = await self._delegated_token("helpers:read")
+        if country is None:
+            payload = await self._get(delegated, "/api/countries")
+            return {
+                "countries": [
+                    {key: item.get(key) for key in ("code", "name", "phone_prefix")}
+                    for item in self._items(payload)
+                ],
+                "cities": [],
+            }
+        params = {"country": country, **({"search": search} if search is not None else {})}
+        payload = await self._get(delegated, "/api/cities", params)
+        return {
+            "countries": [],
+            "cities": [self._city_option(item) for item in self._items(payload)],
+        }
+
+    async def list_chats(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("messages:read")
+        payload = await self._get(delegated, "/api/msg/chats")
+        return {"chats": [self._chat(item) for item in self._items(payload)]}
+
+    async def get_chat(self, chat_id: int) -> dict[str, Any]:
+        self._positive(chat_id, "chat_id")
+        delegated = await self._delegated_token("messages:read")
+        payload = await self._get(delegated, f"/api/msg/chats/{chat_id}")
+        return {"chat": self._chat(self._object(payload))}
+
+    async def list_chat_messages(
+        self, chat_id: int, cursor: str | None = None, limit: int = 50
+    ) -> dict[str, Any]:
+        self._positive(chat_id, "chat_id")
+        cursor = self._optional_text(cursor, "cursor", 64)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            self._error("validation_error", "limit must be between 1 and 100.", False)
+        delegated = await self._delegated_token("messages:read")
+        params: dict[str, Any] = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        payload = self._object(
+            await self._get(delegated, f"/api/msg/chats/{chat_id}/messages", params)
+        )
+        messages = payload.get("data")
+        meta = payload.get("meta")
+        if not isinstance(messages, list) or not isinstance(meta, dict):
+            self._error("upstream_malformed", "Meo returned malformed message data.", True)
+        return {
+            "messages": [self._chat_message(item) for item in messages if isinstance(item, dict)],
+            "pagination": {
+                "has_more": bool(meta.get("has_more")),
+                "next_cursor": meta.get("next_cursor"),
+            },
+            "counterparty_read_at": meta.get("counterparty_read_at"),
+        }
+
+    async def get_unread_message_count(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("messages:read")
+        payload = self._object(await self._get(delegated, "/api/msg/unread-count"))
+        count = payload.get("unread_message_count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            self._error("upstream_malformed", "Meo returned a malformed unread count.", True)
+        return {"unread_message_count": count}
+
     async def _consume_pet_invitation(
         self,
         invitation: str,
@@ -1963,6 +2147,315 @@ class MeoApi:
             "version": item.get("updated_at", item.get("version")),
         }
 
+    @classmethod
+    def _placement_opportunity(cls, item: dict[str, Any]) -> dict[str, Any]:
+        pet_type = item.get("pet_type") if isinstance(item.get("pet_type"), dict) else {}
+        city = item.get("city")
+        requests = (
+            item.get("placement_requests")
+            if isinstance(item.get("placement_requests"), list)
+            else []
+        )
+        return {
+            "pet_id": item.get("id"),
+            "pet_name": item.get("name"),
+            "pet_type_id": pet_type.get("id", item.get("pet_type_id")),
+            "species": pet_type.get("name", item.get("species")),
+            "photo_url": item.get("photo_url"),
+            "country": item.get("country"),
+            "state": item.get("state"),
+            "city": city.get("name") if isinstance(city, dict) else city,
+            "requests": [
+                cls._placement_request(request)
+                for request in requests
+                if isinstance(request, dict) and request.get("status") == "open"
+            ],
+        }
+
+    @classmethod
+    def _placement_request(cls, item: dict[str, Any]) -> dict[str, Any]:
+        pet = item.get("pet") if isinstance(item.get("pet"), dict) else None
+        owner = item.get("owner") if isinstance(item.get("owner"), dict) else None
+        translation = (
+            item.get("notes_translation")
+            if isinstance(item.get("notes_translation"), dict)
+            else None
+        )
+        result = {
+            "placement_request_id": item.get("id", item.get("placement_request_id")),
+            **{
+                key: item.get(key)
+                for key in (
+                    "pet_id",
+                    "request_type",
+                    "status",
+                    "notes",
+                    "notes_locale",
+                    "expires_at",
+                    "start_date",
+                    "end_date",
+                    "response_count",
+                )
+            },
+        }
+        result.update(
+            {
+                "notes_translation": cls._content_translation(translation),
+                "pet": cls._placement_pet(pet) if pet is not None else None,
+                "owner": (
+                    {"user_id": owner.get("id"), "user_name": owner.get("name")}
+                    if owner is not None
+                    else None
+                ),
+                "version": item.get("updated_at", item.get("version")),
+            }
+        )
+        return result
+
+    @classmethod
+    def _placement_viewer_context(cls, item: dict[str, Any]) -> dict[str, Any]:
+        response = item.get("my_response")
+        transfer = item.get("my_transfer")
+        actions = item.get("available_actions")
+        return {
+            "viewer_role": item.get("viewer_role"),
+            "my_response": (
+                {
+                    key: response.get(key)
+                    for key in (
+                        "id",
+                        "status",
+                        "message",
+                        "responded_at",
+                        "accepted_at",
+                        "rejected_at",
+                        "cancelled_at",
+                    )
+                }
+                if isinstance(response, dict)
+                else None
+            ),
+            "my_response_id": item.get("my_response_id"),
+            "my_transfer": (
+                {
+                    "transfer_id": transfer.get("id"),
+                    "status": transfer.get("status"),
+                    "from_user_id": transfer.get("from_user_id"),
+                    "to_user_id": transfer.get("to_user_id"),
+                    "confirmed_at": transfer.get("confirmed_at"),
+                    "version": transfer.get("updated_at", transfer.get("version")),
+                }
+                if isinstance(transfer, dict)
+                else None
+            ),
+            "available_actions": (
+                {key: bool(value) for key, value in actions.items() if isinstance(key, str)}
+                if isinstance(actions, dict)
+                else {}
+            ),
+            "chat_id": item.get("chat_id"),
+        }
+
+    @classmethod
+    def _placement_response(cls, item: dict[str, Any]) -> dict[str, Any]:
+        profile = item.get("helper_profile")
+        transfer = item.get("transfer_request")
+        return {
+            "response_id": item.get("id"),
+            "placement_request_id": item.get("placement_request_id"),
+            "helper_profile_id": item.get("helper_profile_id"),
+            "status": item.get("status"),
+            "message": item.get("message"),
+            "responded_at": item.get("responded_at"),
+            "accepted_at": item.get("accepted_at"),
+            "rejected_at": item.get("rejected_at"),
+            "cancelled_at": item.get("cancelled_at"),
+            "helper_profile": (
+                cls._public_helper_profile(profile) if isinstance(profile, dict) else None
+            ),
+            "transfer": (
+                {
+                    "transfer_id": transfer.get("id"),
+                    "status": transfer.get("status"),
+                    "version": transfer.get("updated_at", transfer.get("version")),
+                }
+                if isinstance(transfer, dict)
+                else None
+            ),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @classmethod
+    def _public_helper_profile(cls, item: dict[str, Any]) -> dict[str, Any]:
+        user = item.get("user") if isinstance(item.get("user"), dict) else {}
+        cities = item.get("cities") if isinstance(item.get("cities"), list) else []
+        pet_types = item.get("pet_types") if isinstance(item.get("pet_types"), list) else []
+        photos = item.get("photos") if isinstance(item.get("photos"), list) else []
+        translation = (
+            item.get("experience_translation")
+            if isinstance(item.get("experience_translation"), dict)
+            else None
+        )
+        return {
+            "helper_profile_id": item.get("id"),
+            "user_id": item.get("user_id", user.get("id")),
+            "user_name": user.get("name"),
+            "user_avatar_url": user.get("avatar_url"),
+            "country": item.get("country"),
+            "state": item.get("state"),
+            "cities": [cls._city_option(city) for city in cities if isinstance(city, dict)],
+            "experience": item.get("experience"),
+            "experience_locale": item.get("experience_locale"),
+            "experience_translation": cls._content_translation(translation),
+            "offer": item.get("offer"),
+            "has_pets": bool(item.get("has_pets")),
+            "has_children": bool(item.get("has_children")),
+            "request_types": [
+                value for value in item.get("request_types", []) if isinstance(value, str)
+            ]
+            if isinstance(item.get("request_types"), list)
+            else [],
+            "pet_types": [
+                {key: pet_type.get(key) for key in ("id", "name", "slug")}
+                for pet_type in pet_types
+                if isinstance(pet_type, dict)
+            ],
+            "photos": [cls._media_photo(photo) for photo in photos if isinstance(photo, dict)],
+        }
+
+    @classmethod
+    def _private_helper_profile(cls, item: dict[str, Any]) -> dict[str, Any]:
+        contacts = item.get("contact_details")
+        return {
+            **cls._public_helper_profile(item),
+            "address": item.get("address"),
+            "zip_code": item.get("zip_code"),
+            "phone_number": item.get("phone_number"),
+            "contact_details": [
+                {"type": contact.get("type"), "value": contact.get("value")}
+                for contact in contacts
+                if isinstance(contact, dict)
+            ]
+            if isinstance(contacts, list)
+            else [],
+            "approval_status": item.get("approval_status"),
+            "status": item.get("status"),
+            "archived_at": item.get("archived_at"),
+            "restored_at": item.get("restored_at"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _city_option(item: dict[str, Any]) -> dict[str, Any]:
+        name = item.get("name")
+        if isinstance(name, dict):
+            name = next((value for value in name.values() if isinstance(value, str)), None)
+        return {"city_id": item.get("id"), "name": name, "country": item.get("country")}
+
+    @staticmethod
+    def _placement_pet(item: dict[str, Any]) -> dict[str, Any]:
+        pet_type = item.get("pet_type") if isinstance(item.get("pet_type"), dict) else {}
+        city = item.get("city")
+        return {
+            "pet_id": item.get("id"),
+            "pet_name": item.get("name"),
+            "pet_type_id": pet_type.get("id", item.get("pet_type_id")),
+            "species": pet_type.get("name", item.get("species")),
+            "photo_url": item.get("photo_url"),
+            "country": item.get("country"),
+            "state": item.get("state"),
+            "city": city.get("name") if isinstance(city, dict) else city,
+        }
+
+    @staticmethod
+    def _content_translation(item: dict[str, Any] | None) -> dict[str, Any] | None:
+        if item is None:
+            return None
+        return {
+            key: item.get(key)
+            for key in (
+                "original_locale",
+                "viewer_locale",
+                "translated",
+                "status",
+                "is_translated",
+            )
+        }
+
+    @staticmethod
+    def _media_photo(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: item.get(key)
+            for key in (
+                "id",
+                "url",
+                "thumb_url",
+                "medium_url",
+                "width",
+                "height",
+                "is_primary",
+                "processing",
+            )
+        }
+
+    @classmethod
+    def _chat(cls, item: dict[str, Any]) -> dict[str, Any]:
+        participants = item.get("participants")
+        latest = item.get("latest_message")
+        return {
+            "chat_id": item.get("id"),
+            "type": item.get("type"),
+            "context_type": item.get("contextable_type"),
+            "context_id": item.get("contextable_id"),
+            "participants": [
+                cls._chat_participant(participant)
+                for participant in participants
+                if isinstance(participant, dict)
+            ]
+            if isinstance(participants, list)
+            else [],
+            "other_participant": (
+                cls._chat_participant(item["other_participant"])
+                if isinstance(item.get("other_participant"), dict)
+                else None
+            ),
+            "latest_message": (
+                {
+                    "message_id": latest.get("id"),
+                    "type": latest.get("type"),
+                    "content_preview": str(latest.get("content") or "")[:200],
+                    "sender_name": latest.get("sender_name"),
+                    "created_at": latest.get("created_at"),
+                }
+                if isinstance(latest, dict)
+                else None
+            ),
+            "unread_count": item.get("unread_count"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _chat_participant(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "user_id": item.get("id", item.get("user_id")),
+            "user_name": item.get("name", item.get("user_name")),
+            "avatar_url": item.get("avatar_url"),
+        }
+
+    @classmethod
+    def _chat_message(cls, item: dict[str, Any]) -> dict[str, Any]:
+        sender = item.get("sender") if isinstance(item.get("sender"), dict) else {}
+        return {
+            "message_id": item.get("id"),
+            "chat_id": item.get("chat_id"),
+            "sender": cls._chat_participant(sender),
+            "type": item.get("type"),
+            "content": item.get("content"),
+            "is_mine": bool(item.get("is_mine")),
+            "created_at": item.get("created_at"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
     @staticmethod
     def _find_relationship(
         sharing: dict[str, Any], user_id: int, role: str
@@ -2266,6 +2759,28 @@ class MeoApi:
                 False,
             )
         return value
+
+    @classmethod
+    def _placement_request_type(cls, value: str | None, *, optional: bool = False) -> str | None:
+        if value is None and optional:
+            return None
+        normalized = cls._required_text(value, "request_type", 32).lower()
+        if normalized not in PLACEMENT_REQUEST_TYPES:
+            cls._error(
+                "validation_error",
+                "request_type must be permanent, foster_free, foster_paid, or pet_sitting.",
+                False,
+            )
+        return normalized
+
+    @classmethod
+    def _country_code(cls, value: str | None, *, optional: bool = False) -> str | None:
+        if value is None and optional:
+            return None
+        normalized = cls._required_text(value, "country", 2).upper()
+        if len(normalized) != 2 or not normalized.isalpha():
+            cls._error("validation_error", "country must be a two-letter code.", False)
+        return normalized
 
     @classmethod
     def _relationship_type_set(cls, values: list[str]) -> set[str]:

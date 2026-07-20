@@ -55,6 +55,9 @@ ALLOWED_SCOPES = [
     "microchips:write",
     "sharing:read",
     "sharing:write",
+    "placement:read",
+    "helpers:read",
+    "messages:read",
 ]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
