@@ -66,8 +66,8 @@ substitutes.
 - Redirect URIs may not contain fragments or embedded user information and are
   matched exactly during authorization/token exchange.
 - S256 PKCE is mandatory; plain PKCE is not supported.
-- The current requested scope set must match the advertised allowlist exactly;
-  refresh cannot escalate scopes.
+- Authorization accepts a non-empty, duplicate-free subset of the advertised
+  scopes; each tool checks its own requirements and refresh cannot escalate.
 - Consent references, exchange codes, OAuth codes, and refresh tokens are
   short-lived or single-use as appropriate.
 - Refresh replay and explicit revocation invalidate the entire local grant.

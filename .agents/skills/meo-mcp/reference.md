@@ -19,11 +19,17 @@ contributors can use local values derived from `.env.example`.
 
 | Tool | Input | Output | MCP scope | Sanctum ability | Upstream | Annotation | Risk |
 |------|-------|--------|-----------|------------------|----------|------------|------|
-| `list_pets` | `{}` | `{ "pets": [...] }` | `pets:read` | `read` | `GET /api/my-pets` | `readOnlyHint: true` | Low, personal pet profiles |
+| Pet discovery/profile: `list_pets`, `find_pets`, `get_pet`, `list_pet_types` | documented in catalog | narrowed pet/type objects | `pets:read` | `pets:read` | pet list/detail/types | read-only | Low |
+| Cross-pet care: `get_pets_overview` | filters and sort options | pet summaries plus birthday/health context | `pets:read health:read` | both domain abilities | pet list/detail plus health lists | read-only | Moderate |
+| Weight: `list_weights`, `get_weight` | explicit pet/record IDs | narrowed weight records | `health:read` | `health:read` | weight list/detail | read-only | Moderate |
+| Vaccination: `list_vaccinations`, `get_vaccination` | explicit pet/record IDs | narrowed vaccination records | `health:read` | `health:read` | vaccination list/detail | read-only | Moderate |
+| Medical: `list_medical_records`, `get_medical_record` | explicit pet/record IDs | narrowed medical records | `health:read` | `health:read` | medical list/detail | read-only | Moderate |
 
-There are no write tools or write scopes. `list_pets` returns only `id`, `name`,
-`species`, `sex`, `age`, and `photo_url` for each pet. A client-side connection
-or authentication helper is not a gateway tool.
+There are no write tools or write scopes. Consult the canonical catalog for
+exact schemas and choose the narrowest non-empty scope subset needed. A
+client-side connection or authentication helper is not a gateway tool.
+MCP exchange tokens use the domain abilities; existing user-created PATs with
+the legacy `read` ability remain compatible at the corresponding Meo endpoints.
 
 ## Unauthenticated probes
 
@@ -55,7 +61,7 @@ For Codex:
 
 ```bash
 codex mcp add meo-mai-moi --url <MCP_BASE_URL>/mcp
-codex mcp login meo-mai-moi --scopes pets:read
+codex mcp login meo-mai-moi --scopes pets:read,health:read
 codex mcp list
 ```
 
@@ -89,7 +95,7 @@ curl -sS <MCP_BASE_URL>/mcp \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 ```
 
-Call the read tool:
+Call a read tool (this example lists pets):
 
 ```bash
 curl -sS <MCP_BASE_URL>/mcp \

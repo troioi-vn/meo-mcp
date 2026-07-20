@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: blocked on `00-mvp-stabilization.md` (vertical slice live: `list_pets` + `pets:read`)
+Status: in progress (Phase 1A — GPT-connector read parity)
 
 ## Goal
 
@@ -18,7 +18,7 @@ Tools stay semantic (LLM workflows), matching meo-gpt-connector design rules in
 | `../meo-mai-moi/backend/routes/api.php` + OpenAPI tags | Full API surface |
 | `../meo-gpt-connector` routers | Proven pets + health R/W shapes |
 | `../meo-mai-moi/docs/api-integration.md` | PAT / ability contract for programmatic clients |
-| This repo today | `list_pets` only (`pets:read`) |
+| Phase 0 baseline | `list_pets` only (`pets:read`); expand through the phases below |
 
 ### Domains in scope
 
@@ -37,7 +37,7 @@ infrastructure/IoT unless product explicitly wants agent access later.
 - [x] Streamable HTTP `/mcp`
 - [x] Tool: `list_pets` (read-only)
 - [x] Scope: `pets:read`
-- [ ] Complete `todo/00-mvp-stabilization.md` before expanding this surface
+- [x] Complete `todo/00-mvp-stabilization.md` before expanding this surface
 
 ## Capability matrix prerequisite
 
@@ -64,13 +64,13 @@ Match the read side of the ChatGPT connector so agents can inspect pets and core
 
 ### Work items
 
-- [ ] Map each GPT connector route to one or more MCP tools + input schemas
-- [ ] Expand `ALLOWED_SCOPES` with narrowly named read scopes in lockstep with
+- [x] Map each GPT connector route to one or more MCP tools + input schemas
+- [x] Expand `ALLOWED_SCOPES` with narrowly named read scopes in lockstep with
       Meo Sanctum abilities / MCP connector config in `meo-mai-moi`
-- [ ] Implement Meo client methods in `meo_api.py`; keep normalization in the gateway
-- [ ] Structured error translation for validation / 403 / 404
-- [ ] Tests per tool (auth required, happy path, Meo error mapping)
-- [ ] Update server `instructions` string as capabilities grow
+- [x] Implement Meo client methods in `meo_api.py`; keep normalization in the gateway
+- [x] Structured error translation for validation / 403 / 404
+- [x] Tests per tool (auth required, happy path, Meo error mapping)
+- [x] Update server `instructions` string as capabilities grow
 - [ ] Smoke on the development MCP endpoint after deploy using the private operator runbook
 
 ## Phase 1B — Low-risk GPT-connector writes
@@ -120,10 +120,10 @@ Match the read side of the ChatGPT connector so agents can inspect pets and core
 
 When scopes expand beyond `pets:read`:
 
-- [ ] MCP connector allowlist / ability grants for new scopes
-- [ ] Consent UI (`/mcp-connect`) copy lists new scopes clearly
-- [ ] Exchange issues Sanctum tokens with matching abilities
-- [ ] Docs in meo-mai-moi if API integration contract changes
+- [x] MCP connector allowlist / ability grants for new scopes
+- [x] Consent UI (`/mcp-connect`) copy lists new scopes clearly
+- [x] Exchange issues Sanctum tokens with matching abilities
+- [x] Docs in meo-mai-moi if API integration contract changes
 
 ## Definition of done
 

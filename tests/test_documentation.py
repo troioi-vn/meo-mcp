@@ -33,7 +33,7 @@ def test_relative_documentation_links_resolve() -> None:
 def test_tool_catalog_matches_the_implemented_mvp_mapping() -> None:
     catalog = (ROOT / "docs" / "tools.md").read_text()
 
-    assert ALLOWED_SCOPES == ["pets:read"]
+    assert ALLOWED_SCOPES == ["pets:read", "health:read"]
     assert "`list_pets`" in catalog
     assert "`pets:read`" in catalog
     assert "`read`" in catalog
@@ -51,7 +51,7 @@ def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:
     assert skill.startswith("---\nname: meo-mcp\ndescription:")
     for trigger in ("Meo MCP", "meo-mcp", "Streamable HTTP", "OAuth", "list_pets", "pets:read"):
         assert trigger in skill.split("---", 2)[1]
-    for mapping in ("`list_pets`", "`pets:read`", "`read`", "`GET /api/my-pets`"):
+    for mapping in ("`list_pets`", "`pets:read`", "`health:read`", "`read`"):
         assert mapping in reference
     assert 'default_prompt: "Use $meo-mcp ' in interface
 

@@ -44,7 +44,7 @@ ACCESS_TOKEN_TTL = timedelta(hours=1)
 AUTHORIZATION_CODE_TTL = timedelta(minutes=5)
 CONSENT_TTL = timedelta(minutes=10)
 REFRESH_TOKEN_TTL = timedelta(days=90)
-ALLOWED_SCOPES = ["pets:read"]
+ALLOWED_SCOPES = ["pets:read", "health:read"]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 
@@ -107,8 +107,15 @@ class DatabaseOAuthProvider(
         if not PKCE_S256_PATTERN.fullmatch(params.code_challenge):
             raise AuthorizeError("invalid_request", "A valid S256 PKCE challenge is required.")
         scopes = params.scopes or []
-        if scopes != ALLOWED_SCOPES:
-            raise AuthorizeError("invalid_scope", "Only pets:read is available.")
+        if (
+            not scopes
+            or len(scopes) != len(set(scopes))
+            or any(scope not in ALLOWED_SCOPES for scope in scopes)
+        ):
+            raise AuthorizeError(
+                "invalid_scope",
+                "Request a non-empty subset of pets:read and health:read without duplicates.",
+            )
         request = AuthorizationRequest(
             client_id=client.client_id or "",
             redirect_uri=str(params.redirect_uri),

@@ -1,6 +1,6 @@
 ---
 name: meo-mcp
-description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing health and list_pets with pets:read, diagnosing structured failures, deploying safely, and adding narrowly scoped semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
+description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet and health read tools with pets:read or health:read, diagnosing structured failures, deploying safely, and adding narrowly scoped semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, health:read, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
 ---
 
 # Meo MCP gateway
@@ -42,8 +42,8 @@ workflows and product-domain concepts. Do not copy that knowledge here.
 4. Complete Meo consent in the browser. Do not record authorization URLs,
    callback query strings, codes, or tokens in chat, logs, screenshots, or
    issue text.
-5. Discover tools before calling them. For the current baseline, confirm only
-   the documented read tool and scope, then call `list_pets` with `{}`.
+5. Discover tools before calling them. Confirm the documented read surface and
+   approved scope subset, then call the narrowest tool that proves the flow.
 6. Report the client, tool, result status, and minimal acceptance evidence. Do
    not reproduce personal pet records unless the task genuinely needs them.
 

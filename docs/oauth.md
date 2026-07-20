@@ -58,7 +58,7 @@ Detailed behavior:
    `token_endpoint_auth_method=none`. At least one redirect URI is required;
    client secrets are rejected and never persisted.
 2. The authorization request must use the exact MCP resource audience, the
-   exact current scope set, and an S256 PKCE challenge. Redirect matching is
+   non-empty, duplicate-free subset of current scopes, and an S256 PKCE challenge. Redirect matching is
    exact against registered metadata.
 3. The gateway persists a ten-minute authorization request and redirects the
    browser to Meo's `/mcp-connect` page with an HMAC-signed, expiring reference.
@@ -78,12 +78,14 @@ Detailed behavior:
 
 | MCP scope | Consent meaning | Delegated Sanctum ability | Used by |
 |-----------|-----------------|----------------------------|---------|
-| `pets:read` | Read the user's pet profiles | `read` | `list_pets` |
+| `pets:read` | View the user's pet profiles and public pet-type reference data | `pets:read` (legacy PAT: `read`) | Pet list/find/detail, pet types, overview |
+| `health:read` | View weight, vaccination, and medical history for accessible pets | `health:read` (legacy PAT: `read`) | Health list/detail tools, overview |
 
 The complete tool-level mapping is in [tools.md](tools.md). Adding a scope
 requires coordinated gateway OAuth metadata, tool enforcement, Meo consent
-copy, and Sanctum abilities. A scope must not be advertised before a tool needs
-it.
+copy, and Sanctum abilities. Clients request a non-empty subset without
+duplicates; each tool enforces its own scope requirement. A scope must not be
+advertised before a tool needs it.
 
 ## Lifetimes and persistence
 

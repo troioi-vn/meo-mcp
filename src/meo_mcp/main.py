@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
 import structlog
@@ -105,12 +106,15 @@ def create_app(settings: Settings | None = None) -> Starlette:
     public_host = settings.public_base_url.host
     server = FastMCP(
         "Meo Mai Moi",
-        instructions="Read-only access to your Meo Mai Moi pets.",
+        instructions=(
+            "Read-only access to Meo Mai Moi pet profiles and health history. "
+            "Resolve names with find_pets before using explicit pet and record IDs."
+        ),
         auth_server_provider=provider,
         auth=AuthSettings(
             issuer_url=settings.issuer,
             resource_server_url=settings.resource,
-            required_scopes=ALLOWED_SCOPES,
+            required_scopes=[],
             client_registration_options=ClientRegistrationOptions(
                 enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=ALLOWED_SCOPES
             ),
@@ -125,30 +129,122 @@ def create_app(settings: Settings | None = None) -> Starlette:
         ),
     )
 
-    @server.tool(annotations={"readOnlyHint": True})
+    annotations = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    }
+
+    def tool_result(result: dict) -> CallToolResult:
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(result, separators=(",", ":")))],
+            structuredContent=result,
+            isError=False,
+        )
+
+    def tool_error(exc: MeoApiError) -> CallToolResult:
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text", text=json.dumps(exc.payload, separators=(",", ":"), sort_keys=True)
+                )
+            ],
+            structuredContent={"error": exc.payload},
+            isError=True,
+        )
+
+    async def call(operation, *args, **kwargs) -> CallToolResult:
+        try:
+            return tool_result(await operation(*args, **kwargs))
+        except MeoApiError as exc:
+            return tool_error(exc)
+
+    @server.tool(annotations=annotations)
     async def list_pets() -> CallToolResult:
         """List the authenticated user's pets with basic profiles and photo URLs."""
-        try:
-            result = await api.list_pets()
-            return CallToolResult(
-                content=[TextContent(type="text", text=json.dumps(result, separators=(",", ":")))],
-                structuredContent=result,
-                isError=False,
-            )
-        except MeoApiError as exc:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=json.dumps(exc.payload, separators=(",", ":"), sort_keys=True),
-                    )
-                ],
-                structuredContent={"error": exc.payload},
-                isError=True,
-            )
+        return await call(api.list_pets)
+
+    @server.tool(annotations=annotations)
+    async def find_pets(name: str | None = None, species: str | None = None) -> CallToolResult:
+        """Find pet candidates by partial name and/or exact species before targeted work."""
+        return await call(api.find_pets, name, species)
+
+    @server.tool(annotations=annotations)
+    async def get_pet(pet_id: int) -> CallToolResult:
+        """Get a narrowed pet profile using an explicit stable pet ID."""
+        return await call(api.get_pet, pet_id)
+
+    @server.tool(annotations=annotations)
+    async def list_pet_types() -> CallToolResult:
+        """List supported species and pet-care capability flags."""
+        return await call(api.list_pet_types)
+
+    @server.tool(annotations=annotations)
+    async def list_weights(pet_id: int, page: int = 1) -> CallToolResult:
+        """List one pet's paginated weight history."""
+        return await call(api.list_weights, pet_id, page)
+
+    @server.tool(annotations=annotations)
+    async def get_weight(pet_id: int, weight_id: int) -> CallToolResult:
+        """Get one explicit weight record belonging to a pet."""
+        return await call(api.get_weight, pet_id, weight_id)
+
+    @server.tool(annotations=annotations)
+    async def list_vaccinations(
+        pet_id: int,
+        page: int = 1,
+        status: Literal["active", "completed", "all"] = "active",
+    ) -> CallToolResult:
+        """List a pet's vaccinations, optionally filtered by lifecycle status."""
+        return await call(api.list_vaccinations, pet_id, page, status)
+
+    @server.tool(annotations=annotations)
+    async def get_vaccination(pet_id: int, vaccination_id: int) -> CallToolResult:
+        """Get one explicit vaccination record belonging to a pet."""
+        return await call(api.get_vaccination, pet_id, vaccination_id)
+
+    @server.tool(annotations=annotations)
+    async def list_medical_records(
+        pet_id: int, page: int = 1, record_type: str | None = None
+    ) -> CallToolResult:
+        """List a pet's medical history, optionally filtered by record type."""
+        return await call(api.list_medical_records, pet_id, page, record_type)
+
+    @server.tool(annotations=annotations)
+    async def get_medical_record(pet_id: int, record_id: int) -> CallToolResult:
+        """Get one explicit medical record belonging to a pet."""
+        return await call(api.get_medical_record, pet_id, record_id)
+
+    @server.tool(annotations=annotations)
+    async def get_pets_overview(
+        name: str | None = None,
+        species: str | None = None,
+        only_with_upcoming_vaccination: bool = False,
+        sort_by: Literal["name", "next_vaccination_due_at", "next_birthday_at"] = "name",
+        sort_order: Literal["asc", "desc"] = "asc",
+    ) -> CallToolResult:
+        """Compare pets with birthday context, active vaccinations, and recent weights."""
+        return await call(
+            api.get_pets_overview,
+            name,
+            species,
+            only_with_upcoming_vaccination,
+            sort_by,
+            sort_order,
+        )
 
     async def health(_: Request) -> Response:
         return JSONResponse({"status": "ok"})
+
+    async def protected_resource(_: Request) -> Response:
+        return JSONResponse(
+            {
+                "resource": settings.resource,
+                "authorization_servers": [str(settings.issuer)],
+                "scopes_supported": ALLOWED_SCOPES,
+            }
+        )
 
     async def meo_callback(request: Request) -> Response:
         raw_request_id = request.query_params.get("request_id", "")
@@ -180,6 +276,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
     app = Starlette(
         routes=[
             Route("/health", health),
+            Route("/.well-known/oauth-protected-resource", protected_resource),
+            Route("/.well-known/oauth-protected-resource/mcp", protected_resource),
             Route("/oauth/meo/callback", meo_callback),
             Mount("/", server.streamable_http_app()),
         ],

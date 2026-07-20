@@ -9,7 +9,7 @@
 
 Do not configure a bearer token manually. Point the client at
 `<MCP_BASE_URL>/mcp`; OAuth discovery supplies the authorization server and the
-current `pets:read` scope.
+currently advertised `pets:read` and `health:read` scopes.
 
 ## Generic flow
 
@@ -18,9 +18,9 @@ current `pets:read` scope.
 2. Choose **Authenticate**, **Connect**, or the client's equivalent OAuth action.
 3. Sign in to Meo, review the client name and scopes, and approve or deny.
 4. Return to the client. It should initialize the `Meo Mai Moi` server and
-   discover `list_pets`.
-5. Call `list_pets` with an empty input. A successful result has a top-level
-   `pets` array.
+   discover the read tools in [tools.md](tools.md).
+5. Call a tool covered by the approved scopes. For example, `list_pets` with
+   an empty input returns a top-level `pets` array.
 
 Clients may display a local authentication helper or connection control next to
 the server's tools. Such helpers belong to the client; they are not MCP tools

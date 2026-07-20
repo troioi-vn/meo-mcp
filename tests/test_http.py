@@ -32,9 +32,11 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
     ) as client:
         health = await client.get("/health")
         assert health.status_code == 200
+        metadata = await client.get("/.well-known/oauth-protected-resource/mcp")
         response = await client.post("/mcp", json={})
     assert response.status_code == 401
     assert "resource_metadata=" in response.headers["www-authenticate"]
+    assert metadata.json()["scopes_supported"] == ["pets:read", "health:read"]
 
 
 @pytest.mark.asyncio
@@ -137,7 +139,19 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
 
     assert response.status_code == 200
     assert response.json()["result"]["serverInfo"]["name"] == "Meo Mai Moi"
-    assert [tool["name"] for tool in tools.json()["result"]["tools"]] == ["list_pets"]
+    assert [tool["name"] for tool in tools.json()["result"]["tools"]] == [
+        "list_pets",
+        "find_pets",
+        "get_pet",
+        "list_pet_types",
+        "list_weights",
+        "get_weight",
+        "list_vaccinations",
+        "get_vaccination",
+        "list_medical_records",
+        "get_medical_record",
+        "get_pets_overview",
+    ]
     assert tools.json()["result"]["tools"][0]["annotations"]["readOnlyHint"] is True
     assert called.status_code == 200
     assert json.loads(called.json()["result"]["content"][0]["text"]) == {

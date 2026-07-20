@@ -85,10 +85,12 @@ Current tool error codes:
 |------|-----------|-----------------|-----------------|
 | `scope_required` | no | — | Reauthorize with the tool's required scope |
 | `authorization_inactive` | no | — | Reconnect the Meo account |
+| `validation_error` | no | — | Correct the tool input before retrying |
 | `upstream_unavailable` | yes | — | Retry later; no HTTP response was received |
 | `upstream_unauthorized` | no | `401` | Reconnect; delegated authorization was rejected |
 | `upstream_forbidden` | no | `403` | Stop or change the request; Meo denied access |
 | `upstream_not_found` | no | `404` | Refresh/read targets before retrying |
+| `upstream_validation_failed` | no | `422` | Correct the normalized request; upstream field text is withheld |
 | `upstream_rate_limited` | yes | `429` | Back off before retrying |
 | `upstream_server_error` | yes | `5xx` | Retry later |
 | `upstream_unexpected` | no | other non-`200` | Do not blind-retry; report with request context |

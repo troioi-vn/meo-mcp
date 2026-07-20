@@ -157,6 +157,11 @@ async def test_authorize_requires_exact_redirect_pkce_resource_and_scope(tmp_pat
         transport=transport, base_url=str(settings.public_base_url)
     ) as client:
         accepted = await client.get("/authorize", params=base_params, follow_redirects=False)
+        health_only = await client.get(
+            "/authorize",
+            params={**base_params, "scope": "health:read"},
+            follow_redirects=False,
+        )
         wrong_redirect = await client.get(
             "/authorize",
             params={**base_params, "redirect_uri": "http://127.0.0.1/callback/extra"},
@@ -187,12 +192,25 @@ async def test_authorize_requires_exact_redirect_pkce_resource_and_scope(tmp_pat
             params={**base_params, "scope": "pets:read pets:write"},
             follow_redirects=False,
         )
+        duplicate_scope = await client.get(
+            "/authorize",
+            params={**base_params, "scope": "pets:read pets:read"},
+            follow_redirects=False,
+        )
 
     assert accepted.status_code == 302
+    assert health_only.status_code == 302
     assert accepted.headers["location"].startswith("https://meo.example.test/mcp-connect?")
     assert wrong_redirect.status_code == 400
     assert wrong_redirect.json()["error"] == "invalid_request"
-    for response in (missing_pkce, plain_pkce, malformed_pkce, wrong_resource, escalated_scope):
+    for response in (
+        missing_pkce,
+        plain_pkce,
+        malformed_pkce,
+        wrong_resource,
+        escalated_scope,
+        duplicate_scope,
+    ):
         assert response.status_code == 302
         query = parse_qs(urlparse(response.headers["location"]).query)
         assert query["error"][0] in {"invalid_request", "invalid_scope"}
