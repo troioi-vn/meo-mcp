@@ -1421,6 +1421,834 @@ class MeoApi:
             self._error("upstream_malformed", "Meo returned a malformed unread count.", True)
         return {"unread_message_count": count}
 
+    async def create_placement_request(
+        self,
+        pet_id: int,
+        expected_pet_name: str,
+        request_type: str,
+        start_date: date,
+        idempotency_key: str,
+        end_date: date | None = None,
+        notes: str | None = None,
+        expires_at: date | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        expected_pet_name = self._required_text(expected_pet_name, "expected_pet_name", 255)
+        request_type = self._placement_request_type(request_type)
+        key = self._idempotency_key(idempotency_key)
+        if end_date and end_date < start_date:
+            self._error("validation_error", "end_date must not precede start_date.", False)
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/placement-requests",
+            json_data={
+                "pet_id": pet_id,
+                "request_type": request_type,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat() if end_date else None,
+                "expires_at": expires_at.isoformat() if expires_at else None,
+                "notes": self._optional_text(notes, "notes"),
+            },
+            idempotency_key=key,
+            expected_statuses={201},
+        )
+        created = self._placement_request(self._object(payload))
+        if created.get("pet", {}).get("pet_name") not in {None, expected_pet_name}:
+            self._verification_error("The created placement request pet did not match.")
+        request_id = created.get("placement_request_id")
+        self._positive(request_id, "placement_request_id")
+        verified = await self._verify(self.get_placement_request, request_id)
+        verified_pet = verified["placement_request"].get("pet")
+        if (
+            verified["placement_request"].get("pet_id") != pet_id
+            or not isinstance(verified_pet, dict)
+            or verified_pet.get("pet_name") != expected_pet_name
+        ):
+            self._verification_error("The created placement request could not be verified.")
+        return {**verified, "created": True, "verified": True}
+
+    async def delete_placement_request(
+        self,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        try:
+            await self._checked_placement(placement_request_id, expected_pet_id, expected_pet_name)
+        except MeoApiError as exc:
+            if exc.payload.get("code") not in {"upstream_not_found", "upstream_forbidden"}:
+                raise
+        version, key = self._version(base_version), self._idempotency_key(idempotency_key)
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/placement-requests/{placement_request_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={204},
+        )
+        try:
+            await self.get_placement_request(placement_request_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") in {"upstream_not_found", "upstream_forbidden"}:
+                return {
+                    "placement_request_id": placement_request_id,
+                    "deleted": True,
+                    "verified": True,
+                }
+            raise
+        self._verification_error("The placement request still exists after deletion.")
+
+    async def respond_to_placement_request(
+        self,
+        placement_request_id: int,
+        helper_profile_id: int,
+        expected_pet_name: str,
+        idempotency_key: str,
+        message: str | None = None,
+    ) -> dict[str, Any]:
+        current = await self.get_placement_request(placement_request_id)
+        if current["placement_request"].get("pet", {}).get("pet_name") != self._required_text(
+            expected_pet_name, "expected_pet_name", 255
+        ):
+            self._error("target_mismatch", "The placement request pet does not match.", False)
+        profile = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
+        if profile.get("helper_profile_id") != helper_profile_id:
+            self._error("target_mismatch", "The helper profile does not match.", False)
+        delegated = await self._delegated_token("placement:read", "placement:write", "helpers:read")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-requests/{placement_request_id}/responses",
+            json_data={
+                "helper_profile_id": helper_profile_id,
+                "message": self._optional_text(message, "message"),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        response = self._placement_response(self._object(payload))
+        response_id = response.get("response_id")
+        self._positive(response_id, "response_id")
+        after = await self._verify(self.get_placement_request, placement_request_id)
+        mine = after["viewer_context"].get("my_response")
+        if not isinstance(mine, dict) or mine.get("id") != response_id:
+            self._verification_error("The placement response could not be verified.")
+        return {"response": response, "verified": True}
+
+    async def accept_placement_response(
+        self,
+        placement_request_id: int,
+        response_id: int,
+        expected_helper_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._placement_response_action(
+            placement_request_id,
+            response_id,
+            expected_helper_name,
+            base_version,
+            idempotency_key,
+            "accept",
+            "accepted",
+        )
+
+    async def reject_placement_response(
+        self,
+        placement_request_id: int,
+        response_id: int,
+        expected_helper_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._placement_response_action(
+            placement_request_id,
+            response_id,
+            expected_helper_name,
+            base_version,
+            idempotency_key,
+            "reject",
+            "rejected",
+        )
+
+    async def cancel_placement_response(
+        self, placement_request_id: int, response_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        current = await self.get_placement_request(placement_request_id)
+        mine = current["viewer_context"].get("my_response")
+        if isinstance(mine, dict) and mine.get("id") != response_id:
+            self._error(
+                "target_mismatch", "The response is not the caller's current response.", False
+            )
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-responses/{response_id}/cancel",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        after = await self._verify(self.get_placement_request, placement_request_id)
+        after_mine = after["viewer_context"].get("my_response")
+        if isinstance(after_mine, dict) and after_mine.get("status") not in {
+            "cancelled",
+            "canceled",
+        }:
+            self._verification_error("The response cancellation could not be verified.")
+        return {
+            "placement_request": after["placement_request"],
+            "response_id": response_id,
+            "status": "cancelled",
+            "verified": True,
+        }
+
+    async def confirm_pet_transfer(
+        self, placement_request_id: int, transfer_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._transfer_action(
+            placement_request_id, transfer_id, base_version, idempotency_key, "confirm", "confirmed"
+        )
+
+    async def reject_pet_transfer(
+        self, placement_request_id: int, transfer_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._transfer_action(
+            placement_request_id, transfer_id, base_version, idempotency_key, "reject", "rejected"
+        )
+
+    async def cancel_pet_transfer(
+        self, placement_request_id: int, transfer_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._transfer_action(
+            placement_request_id, transfer_id, base_version, idempotency_key, "cancel", "canceled"
+        )
+
+    async def finalize_temporary_placement(
+        self,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        await self._checked_placement(placement_request_id, expected_pet_id, expected_pet_name)
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-requests/{placement_request_id}/finalize",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        after = await self._verify(self.get_placement_request, placement_request_id)
+        if after["placement_request"].get("status") != "finalized":
+            self._verification_error("The temporary placement finalization could not be verified.")
+        return {**after, "verified": True}
+
+    async def create_helper_profile(
+        self,
+        country: str,
+        city_ids: list[int],
+        phone_number: str,
+        experience: str,
+        has_pets: bool,
+        has_children: bool,
+        request_types: list[str],
+        idempotency_key: str,
+        state: str | None = None,
+        address: str | None = None,
+        zip_code: str | None = None,
+        offer: str | None = None,
+        contact_details: list[dict[str, str]] | None = None,
+        pet_type_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        data = self._helper_profile_write_data(
+            country,
+            city_ids,
+            phone_number,
+            experience,
+            has_pets,
+            has_children,
+            request_types,
+            state,
+            address,
+            zip_code,
+            offer,
+            contact_details,
+            pet_type_ids,
+        )
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/helper-profiles",
+            json_data=data,
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        item = self._private_helper_profile(self._object(payload))
+        profile_id = item.get("helper_profile_id")
+        self._positive(profile_id, "helper_profile_id")
+        verified = await self._verify(self.get_helper_profile, profile_id)
+        return {"helper_profile": verified["helper_profile"], "created": True, "verified": True}
+
+    async def update_helper_profile(
+        self, helper_profile_id: int, base_version: str, idempotency_key: str, **changes: Any
+    ) -> dict[str, Any]:
+        self._positive(helper_profile_id, "helper_profile_id")
+        await self.get_helper_profile(helper_profile_id)
+        clean = {key: value for key, value in changes.items() if value is not None}
+        if not clean:
+            self._error("validation_error", "Provide at least one helper-profile change.", False)
+        clean["base_version"] = self._version(base_version)
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/helper-profiles/{helper_profile_id}",
+            json_data=clean,
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_helper_profile, helper_profile_id)
+        if not self._helper_profile_matches_changes(verified["helper_profile"], clean):
+            self._verification_error("The helper profile update could not be verified.")
+        return {"helper_profile": verified["helper_profile"], "verified": True}
+
+    async def archive_helper_profile(
+        self, helper_profile_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._helper_lifecycle(
+            helper_profile_id, base_version, idempotency_key, "archive", "archived"
+        )
+
+    async def restore_helper_profile(
+        self, helper_profile_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._helper_lifecycle(
+            helper_profile_id, base_version, idempotency_key, "restore", "private"
+        )
+
+    async def delete_helper_profile(
+        self, helper_profile_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        try:
+            await self.get_helper_profile(helper_profile_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") not in {"upstream_not_found", "upstream_forbidden"}:
+                raise
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/helper-profiles/{helper_profile_id}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        try:
+            await self.get_helper_profile(helper_profile_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") in {"upstream_not_found", "upstream_forbidden"}:
+                return {"helper_profile_id": helper_profile_id, "deleted": True, "verified": True}
+            raise
+        self._verification_error("The helper profile still exists after deletion.")
+
+    async def upload_helper_profile_photo_from_url(
+        self, helper_profile_id: int, source_url: str, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        before = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
+        before_ids = {p.get("id") for p in before.get("photos", [])}
+        filename, content, mime = await self._fetch_public_image(source_url)
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        payload = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/helper-profiles/{helper_profile_id}",
+                form_data={"base_version": self._version(base_version)},
+                files={"photos[]": (filename, content, mime)},
+                idempotency_key=self._idempotency_key(idempotency_key),
+            )
+        )
+        uploaded_ids = payload.get("uploaded_photo_ids")
+        if (
+            not isinstance(uploaded_ids, list)
+            or len(uploaded_ids) != 1
+            or isinstance(uploaded_ids[0], bool)
+            or not isinstance(uploaded_ids[0], int)
+            or uploaded_ids[0] <= 0
+        ):
+            self._verification_error("Meo did not identify the uploaded helper-profile photo.")
+        uploaded_id = uploaded_ids[0]
+        after = (await self._verify(self.get_helper_profile, helper_profile_id))["helper_profile"]
+        uploaded = next((p for p in after.get("photos", []) if p.get("id") == uploaded_id), None)
+        if uploaded is None or (
+            uploaded_id in before_ids and before.get("version") != after.get("version")
+        ):
+            self._verification_error("The helper profile photo upload could not be verified.")
+        return {"helper_profile": after, "photo": uploaded, "verified": True}
+
+    async def set_primary_helper_profile_photo(
+        self, helper_profile_id: int, photo_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._helper_photo_action(
+            helper_profile_id, photo_id, base_version, idempotency_key, "set-primary"
+        )
+
+    async def delete_helper_profile_photo(
+        self, helper_profile_id: int, photo_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._helper_photo_action(
+            helper_profile_id, photo_id, base_version, idempotency_key, "delete"
+        )
+
+    async def open_placement_chat(
+        self,
+        placement_request_id: int,
+        recipient_user_id: int,
+        expected_recipient_name: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        await self.get_placement_request(placement_request_id)
+        expected_recipient_name = self._required_text(
+            expected_recipient_name, "expected_recipient_name", 255
+        )
+        delegated = await self._delegated_token("placement:read", "messages:read", "messages:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/msg/chats",
+            json_data={
+                "type": "direct",
+                "recipient_id": recipient_user_id,
+                "contextable_type": "PlacementRequest",
+                "contextable_id": placement_request_id,
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200, 201},
+        )
+        chat = self._chat(self._object(payload))
+        if not any(
+            p.get("user_id") == recipient_user_id and p.get("user_name") == expected_recipient_name
+            for p in chat.get("participants", [])
+        ):
+            self._error("target_mismatch", "The placement chat recipient did not match.", False)
+        chat_id = chat.get("chat_id")
+        self._positive(chat_id, "chat_id")
+        verified = await self._verify(self.get_chat, chat_id)
+        return {"chat": verified["chat"], "verified": True}
+
+    async def send_chat_message(
+        self, chat_id: int, expected_recipient_user_id: int, content: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        chat = await self._checked_chat(chat_id, expected_recipient_user_id)
+        content = self._required_text(content, "content", 5000)
+        delegated = await self._delegated_token("messages:read", "messages:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/msg/chats/{chat_id}/messages",
+            json_data={"type": "text", "content": content},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        message = self._chat_message(self._object(payload))
+        if message.get("chat_id") != chat.get("chat_id") or not message.get("is_mine"):
+            self._verification_error("The sent message could not be verified.")
+        verified = await self._find_chat_message(chat_id, message.get("message_id"))
+        if (
+            verified is None
+            or not verified.get("is_mine")
+            or verified.get("type") != "text"
+            or verified.get("content") != content
+        ):
+            self._verification_error("The sent message could not be verified after creation.")
+        return {"message": verified, "verified": True}
+
+    async def send_chat_image_from_url(
+        self, chat_id: int, expected_recipient_user_id: int, source_url: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        await self._checked_chat(chat_id, expected_recipient_user_id)
+        filename, content, mime = await self._fetch_public_image(source_url)
+        if len(content) > 5 * 1024 * 1024:
+            self._error("source_image_too_large", "Chat images are limited to 5 MiB.", False)
+        delegated = await self._delegated_token("messages:read", "messages:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/msg/chats/{chat_id}/messages",
+            form_data={"type": "image"},
+            files={"image": (filename, content, mime)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        message = self._chat_message(self._object(payload))
+        if message.get("chat_id") != chat_id or message.get("type") != "image":
+            self._verification_error("The sent image message could not be verified.")
+        verified = await self._find_chat_message(chat_id, message.get("message_id"))
+        if verified is None or not verified.get("is_mine") or verified.get("type") != "image":
+            self._verification_error("The sent image message could not be verified after creation.")
+        return {"message": verified, "verified": True}
+
+    async def mark_chat_read(
+        self, chat_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        await self.get_chat(chat_id)
+        delegated = await self._delegated_token("messages:read", "messages:write")
+        payload = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/msg/chats/{chat_id}/read",
+                json_data={"base_version": self._version(base_version)},
+                idempotency_key=self._idempotency_key(idempotency_key),
+            )
+        )
+        if payload.get("chat_id") != chat_id or not isinstance(payload.get("last_read_at"), str):
+            self._verification_error("Meo did not return a verifiable chat read receipt.")
+        after = await self._verify(self.get_chat, chat_id)
+        if after["chat"].get("unread_count") not in {None, 0}:
+            self._verification_error("The chat read receipt could not be verified.")
+        return {"chat": after["chat"], "marked_read": True, "verified": True}
+
+    async def delete_own_message(
+        self,
+        chat_id: int,
+        message_id: int,
+        expected_content: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(message_id, "message_id")
+        target = await self._find_chat_message(chat_id, message_id)
+        if target is not None and (
+            not target.get("is_mine") or target.get("content") != expected_content
+        ):
+            self._error(
+                "target_mismatch", "The own message target or content does not match.", False
+            )
+        delegated = await self._delegated_token("messages:read", "messages:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/msg/messages/{message_id}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        if await self._find_chat_message(chat_id, message_id) is not None:
+            self._verification_error("The message still appears after deletion.")
+        return {"message_id": message_id, "deleted": True, "verified": True}
+
+    async def _find_chat_message(
+        self, chat_id: int, message_id: Any, max_pages: int = 10
+    ) -> dict[str, Any] | None:
+        self._positive(message_id, "message_id")
+        cursor: str | None = None
+        for _ in range(max_pages):
+            page = await self.list_chat_messages(chat_id, cursor=cursor, limit=100)
+            target = next(
+                (item for item in page["messages"] if item.get("message_id") == message_id), None
+            )
+            if target is not None:
+                return target
+            pagination = page["pagination"]
+            cursor = pagination.get("next_cursor")
+            if not pagination.get("has_more") or not isinstance(cursor, str):
+                return None
+        self._error(
+            "target_not_in_bounded_history",
+            "The message was not found in the newest 1,000 chat messages.",
+            False,
+        )
+
+    async def leave_chat(
+        self, chat_id: int, expected_recipient_user_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        try:
+            await self._checked_chat(chat_id, expected_recipient_user_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") not in {"upstream_not_found", "upstream_forbidden"}:
+                raise
+        delegated = await self._delegated_token("messages:read", "messages:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/msg/chats/{chat_id}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        try:
+            await self.get_chat(chat_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") in {"upstream_not_found", "upstream_forbidden"}:
+                return {"chat_id": chat_id, "left": True, "verified": True}
+            raise
+        self._verification_error("The chat is still visible after leaving.")
+
+    async def _checked_placement(
+        self, placement_request_id: int, expected_pet_id: int, expected_pet_name: str
+    ) -> dict[str, Any]:
+        self._positive(placement_request_id, "placement_request_id")
+        self._positive(expected_pet_id, "expected_pet_id")
+        expected_pet_name = self._required_text(expected_pet_name, "expected_pet_name", 255)
+        current = await self.get_placement_request(placement_request_id)
+        request = current["placement_request"]
+        pet = request.get("pet") if isinstance(request.get("pet"), dict) else {}
+        if request.get("pet_id") != expected_pet_id or pet.get("pet_name") != expected_pet_name:
+            self._error("target_mismatch", "The placement request pet does not match.", False)
+        self._require_version_available(request)
+        return current
+
+    async def _placement_response_action(
+        self,
+        placement_request_id: int,
+        response_id: int,
+        expected_helper_name: str,
+        base_version: str,
+        idempotency_key: str,
+        action: str,
+        expected_status: str,
+    ) -> dict[str, Any]:
+        self._positive(response_id, "response_id")
+        expected_helper_name = self._required_text(
+            expected_helper_name, "expected_helper_name", 255
+        )
+        responses = (await self.list_placement_responses(placement_request_id))["responses"]
+        target = next((item for item in responses if item.get("response_id") == response_id), None)
+        helper = target.get("helper_profile") if isinstance(target, dict) else None
+        if not isinstance(helper, dict) or helper.get("user_name") != expected_helper_name:
+            self._error("target_mismatch", "The placement response helper does not match.", False)
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-responses/{response_id}/{action}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        after = (await self._verify(self.list_placement_responses, placement_request_id))[
+            "responses"
+        ]
+        verified = next((item for item in after if item.get("response_id") == response_id), None)
+        if not verified or verified.get("status") != expected_status:
+            self._verification_error("The placement response transition could not be verified.")
+        return {"response": verified, "verified": True}
+
+    async def _transfer_action(
+        self,
+        placement_request_id: int,
+        transfer_id: int,
+        base_version: str,
+        idempotency_key: str,
+        action: str,
+        expected_status: str,
+    ) -> dict[str, Any]:
+        self._positive(transfer_id, "transfer_id")
+        current = await self.get_placement_request(placement_request_id)
+        transfer = current["viewer_context"].get("my_transfer")
+        if not isinstance(transfer, dict) or transfer.get("transfer_id") != transfer_id:
+            self._error(
+                "target_mismatch", "The transfer is not the caller's current handover.", False
+            )
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        method = "DELETE" if action == "cancel" else "POST"
+        path = f"/api/transfer-requests/{transfer_id}" + (
+            "" if action == "cancel" else f"/{action}"
+        )
+        await self._request(
+            delegated,
+            method,
+            path,
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        after = await self._verify(self.get_placement_request, placement_request_id)
+        verified = after["viewer_context"].get("my_transfer")
+        if isinstance(verified, dict) and verified.get("status") != expected_status:
+            self._verification_error("The transfer transition could not be verified.")
+        return {
+            "placement_request": after["placement_request"],
+            "transfer_id": transfer_id,
+            "status": expected_status,
+            "verified": True,
+        }
+
+    def _helper_profile_write_data(
+        self,
+        country: str,
+        city_ids: list[int],
+        phone_number: str,
+        experience: str,
+        has_pets: bool,
+        has_children: bool,
+        request_types: list[str],
+        state: str | None,
+        address: str | None,
+        zip_code: str | None,
+        offer: str | None,
+        contact_details: list[dict[str, str]] | None,
+        pet_type_ids: list[int] | None,
+    ) -> dict[str, Any]:
+        country = self._required_text(country, "country", 2).upper()
+        if len(country) != 2 or not country.isalpha() or not city_ids:
+            self._error("validation_error", "country and at least one city_id are required.", False)
+        for city_id in city_ids:
+            self._positive(city_id, "city_id")
+        normalized_types = [self._placement_request_type(value) for value in request_types]
+        if not normalized_types:
+            self._error("validation_error", "At least one request_type is required.", False)
+        for pet_type_id in pet_type_ids or []:
+            self._positive(pet_type_id, "pet_type_id")
+        return {
+            "country": country,
+            "city_ids": city_ids,
+            "phone_number": self._required_text(phone_number, "phone_number", 20),
+            "experience": self._required_text(experience, "experience", 10000),
+            "has_pets": has_pets,
+            "has_children": has_children,
+            "request_types": normalized_types,
+            "state": self._optional_text(state, "state"),
+            "address": self._optional_text(address, "address"),
+            "zip_code": self._optional_text(zip_code, "zip_code"),
+            "offer": self._optional_text(offer, "offer"),
+            "contact_details": contact_details or [],
+            "pet_type_ids": pet_type_ids or [],
+        }
+
+    @staticmethod
+    def _helper_profile_matches_changes(profile: dict[str, Any], changes: dict[str, Any]) -> bool:
+        direct_fields = {
+            "country",
+            "phone_number",
+            "experience",
+            "has_pets",
+            "has_children",
+            "state",
+            "address",
+            "zip_code",
+            "offer",
+            "status",
+        }
+        for field in direct_fields & changes.keys():
+            expected = changes[field]
+            if field == "country" and isinstance(expected, str):
+                expected = expected.upper()
+            if profile.get(field) != expected:
+                return False
+        if "city_ids" in changes:
+            actual = [
+                item.get("city_id") for item in profile.get("cities", []) if isinstance(item, dict)
+            ]
+            if not all(isinstance(item, int) and not isinstance(item, bool) for item in actual):
+                return False
+            if set(actual) != set(changes["city_ids"]):
+                return False
+        if "pet_type_ids" in changes:
+            actual = [
+                item.get("id") for item in profile.get("pet_types", []) if isinstance(item, dict)
+            ]
+            if not all(isinstance(item, int) and not isinstance(item, bool) for item in actual):
+                return False
+            if set(actual) != set(changes["pet_type_ids"]):
+                return False
+        if "request_types" in changes and sorted(profile.get("request_types", [])) != sorted(
+            changes["request_types"]
+        ):
+            return False
+        if "contact_details" in changes:
+            actual = {
+                (item.get("type"), item.get("value"))
+                for item in profile.get("contact_details", [])
+                if isinstance(item, dict)
+            }
+            expected = {
+                (item.get("type"), item.get("value"))
+                for item in changes["contact_details"]
+                if isinstance(item, dict)
+            }
+            if actual != expected:
+                return False
+        return True
+
+    async def _helper_lifecycle(
+        self,
+        helper_profile_id: int,
+        base_version: str,
+        idempotency_key: str,
+        action: str,
+        expected_status: str,
+    ) -> dict[str, Any]:
+        await self.get_helper_profile(helper_profile_id)
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/helper-profiles/{helper_profile_id}/{action}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        after = (await self._verify(self.get_helper_profile, helper_profile_id))["helper_profile"]
+        if after.get("status") != expected_status:
+            self._verification_error("The helper profile lifecycle change could not be verified.")
+        return {"helper_profile": after, "verified": True}
+
+    async def _helper_photo_action(
+        self,
+        helper_profile_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+        action: str,
+    ) -> dict[str, Any]:
+        self._positive(photo_id, "photo_id")
+        before = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
+        photo_exists = any(photo.get("id") == photo_id for photo in before.get("photos", []))
+        if not photo_exists and action != "delete":
+            self._error(
+                "target_mismatch", "The photo does not belong to the helper profile.", False
+            )
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        path = f"/api/helper-profiles/{helper_profile_id}/photos/{photo_id}"
+        method, expected = ("DELETE", {204}) if action == "delete" else ("POST", {200})
+        if action != "delete":
+            path += "/set-primary"
+        await self._request(
+            delegated,
+            method,
+            path,
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses=expected,
+        )
+        after = (await self._verify(self.get_helper_profile, helper_profile_id))["helper_profile"]
+        photo = next((p for p in after.get("photos", []) if p.get("id") == photo_id), None)
+        if (action == "delete" and photo is not None) or (
+            action != "delete" and (not photo or not photo.get("is_primary"))
+        ):
+            self._verification_error("The helper profile photo change could not be verified.")
+        return {
+            "helper_profile": after,
+            "photo_id": photo_id,
+            "deleted": action == "delete",
+            "verified": True,
+        }
+
+    async def _checked_chat(self, chat_id: int, expected_recipient_user_id: int) -> dict[str, Any]:
+        self._positive(chat_id, "chat_id")
+        self._positive(expected_recipient_user_id, "expected_recipient_user_id")
+        chat = (await self.get_chat(chat_id))["chat"]
+        if not any(
+            p.get("user_id") == expected_recipient_user_id for p in chat.get("participants", [])
+        ):
+            self._error("target_mismatch", "The chat recipient does not match.", False)
+        return chat
+
     async def _consume_pet_invitation(
         self,
         invitation: str,
@@ -2230,6 +3058,7 @@ class MeoApi:
                         "accepted_at",
                         "rejected_at",
                         "cancelled_at",
+                        "updated_at",
                     )
                 }
                 if isinstance(response, dict)

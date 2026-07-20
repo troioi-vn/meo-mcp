@@ -78,6 +78,30 @@ part of the end-user tool surface.
 | `get_chat` | Live | Read participants and placement context for one explicit chat | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/chats/{chat_id}` | Read | High; private participant and context metadata |
 | `list_chat_messages` | Live | Page through one explicit chat without changing read receipts | `messages:read` | `messages:read` (legacy PAT: `read`) | side-effect-free `GET /api/msg/chats/{chat_id}/messages` | Read | Critical; private message bodies and image URLs |
 | `get_unread_message_count` | Live | Count unread messages without marking any chat read | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/unread-count` | Read | Moderate; private activity metadata |
+| `create_placement_request` | Proposed (Phase 3B) | Create one explicit pet placement request | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `create`) | `POST /api/placement-requests`; verification reads | Create | High; publishes placement intent |
+| `delete_placement_request` | Proposed (Phase 3B) | Delete an exact owned request after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `delete`) | request read; `DELETE /api/placement-requests/{id}`; absence verification | Delete | High; removes request context |
+| `respond_to_placement_request` | Proposed (Phase 3B) | Offer an exact helper profile for an exact placement | `placement:read` + `placement:write` + `helpers:read` | `placement:read` + `placement:write` + `helpers:read` (legacy PAT: `read` + `create`) | request/profile reads; `POST .../responses`; verification | Create | High; shares helper identity and offer |
+| `accept_placement_response` | Proposed (Phase 3B) | Accept an exact owner-reviewed response and start handover | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | response read; `POST .../{id}/accept`; verification | Update | Critical; selects custodian |
+| `reject_placement_response` | Proposed (Phase 3B) | Reject an exact owner-reviewed response | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | response read; `POST .../{id}/reject`; verification | Update | High; blocks helper response |
+| `cancel_placement_response` | Proposed (Phase 3B) | Cancel the caller's exact current response | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | context read; `POST .../{id}/cancel`; verification | Update | High; withdraws offer |
+| `confirm_pet_transfer` | Proposed (Phase 3B) | Confirm receipt for an exact handover | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | context read; `POST /api/transfer-requests/{id}/confirm`; verification | Update | Critical; changes custody |
+| `reject_pet_transfer` | Proposed (Phase 3B) | Reject an exact pending handover | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | context read; `POST .../{id}/reject`; verification | Update | Critical; aborts transfer |
+| `cancel_pet_transfer` | Proposed (Phase 3B) | Cancel an exact initiated handover | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `delete`) | context read; `DELETE /api/transfer-requests/{id}`; verification | Delete | Critical; resets flow |
+| `finalize_temporary_placement` | Proposed (Phase 3B) | End an exact active foster/sitting placement | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | request read; `POST .../{id}/finalize`; verification | Update | Critical; ends care relationship |
+| `create_helper_profile` | Proposed (Phase 3B) | Create one private helper profile with stable locations | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `create`) | location reads; `POST /api/helper-profiles`; verification | Create | High; stores contact data |
+| `update_helper_profile` | Proposed (Phase 3B) | Update selected fields on an exact profile/version | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `update`) | detail read; `PUT /api/helper-profiles/{id}`; verification | Update | High; private/public data |
+| `archive_helper_profile` | Proposed (Phase 3B) | Archive an exact unused helper profile | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `update`) | detail read; `POST .../{id}/archive`; verification | Update | High; disables profile |
+| `restore_helper_profile` | Proposed (Phase 3B) | Restore an exact archived profile as private | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `update`) | detail read; `POST .../{id}/restore`; verification | Update | High; reactivates profile |
+| `delete_helper_profile` | Proposed (Phase 3B) | Delete an exact unused profile and photos | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `delete`) | detail read; `DELETE /api/helper-profiles/{id}`; absence verification | Delete | Critical; destroys data |
+| `upload_helper_profile_photo_from_url` | Proposed (Phase 3B) | Import one bounded public HTTPS image | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `update`) | guarded GET; multipart profile update; verification | Create | High; personal image |
+| `set_primary_helper_profile_photo` | Proposed (Phase 3B) | Make one exact profile photo primary | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `update`) | detail read; `POST .../set-primary`; verification | Update | High; public presentation |
+| `delete_helper_profile_photo` | Proposed (Phase 3B) | Delete one exact profile photo | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `delete`) | detail read; `DELETE .../photos/{id}`; verification | Delete | Critical; destroys image |
+| `open_placement_chat` | Proposed (Phase 3B) | Open/find a direct chat with an exact placement counterparty | `placement:read` + `messages:read` + `messages:write` | `placement:read` + `messages:read` + `messages:write` (legacy PAT: `read` + `create`) | placement read; `POST /api/msg/chats`; verification | Create | Critical; private channel |
+| `send_chat_message` | Proposed (Phase 3B) | Send replay-safe text to an exact counterparty | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `create`) | chat read; `POST .../messages`; verification | Create | Critical; correspondence |
+| `send_chat_image_from_url` | Proposed (Phase 3B) | Send a bounded HTTPS image to an exact chat | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `create`) | guarded GET; multipart message POST; verification | Create | Critical; private image |
+| `mark_chat_read` | Proposed (Phase 3B) | Explicitly advance one chat read receipt | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `update`) | chat read; `POST .../read`; verification | Update | Moderate; activity signal |
+| `delete_own_message` | Proposed (Phase 3B) | Soft-delete one exact own message/content/version | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `delete`) | message read; `DELETE /api/msg/messages/{id}`; verification | Delete | Critical; correspondence |
+| `leave_chat` | Proposed (Phase 3B) | Leave one exact direct chat after participant preview | `messages:read` + `messages:write` | `messages:read` + `messages:write` (legacy PAT: `read` + `delete`) | chat read; `DELETE /api/msg/chats/{id}`; verification | Delete | Critical; ends access |
 
 ## Scope model
 
@@ -94,8 +118,11 @@ part of the end-user tool surface.
 | `sharing:read` | View pet collaborators, roles, suggestions, and invitation previews/links | `sharing:read` | Pet sharing reads |
 | `sharing:write` | Grant, change, revoke, accept, decline, or leave pet access | `sharing:write` | Pet sharing mutations; always paired with `sharing:read` by these tools |
 | `placement:read` | View open placement opportunities and role-shaped request/response/handover state | `placement:read` | Placement request, response, and viewer-context reads |
+| `placement:write` | Create and manage placement requests, responses, transfers, and finalization | `placement:write` | Placement mutations; paired with `placement:read` |
 | `helpers:read` | Browse public helper profiles and view profiles the caller may manage or review | `helpers:read` | Public/private helper reads and location options |
+| `helpers:write` | Create and manage the caller's helper profiles and photos | `helpers:write` | Helper mutations; paired with `helpers:read` |
 | `messages:read` | View the caller's chats, private messages, and unread counts | `messages:read` | Messaging reads without changing read receipts |
+| `messages:write` | Open placement chats, send/remove messages, mark read, and leave chats | `messages:write` | Messaging mutations; paired with `messages:read` |
 
 Scopes are independently requestable non-empty subsets. Dynamic registration
 defaults to the full advertised set, while authorization can request a narrow
@@ -512,7 +539,8 @@ grant helper-profile or correspondence access.
   unread count, and nullable version. Email addresses and role internals are
   excluded. Only currently active participant chats are returned.
 - `ChatMessage` contains stable message/chat/sender IDs, sender display name and
-  avatar, type, content, `is_mine`, created timestamp, and nullable version.
+  avatar, type, content, `is_mine`, created timestamp, and the authority version
+  required for deletion concurrency checks.
   `list_chat_messages` requires positive `chat_id`, optional ISO cursor, and
   limit 1–100; it returns `has_more`, nullable next cursor, and counterparty
   read timestamp. Listing never updates `last_read_at`; that mutation belongs
@@ -523,8 +551,33 @@ grant helper-profile or correspondence access.
 The legacy `/api/placement-requests/{id}/confirm` and `/reject` controllers are
 not tool dependencies because they contain no enforced state transition. The
 actual user-facing acceptance, transfer confirmation/rejection/cancellation,
-and temporary-placement finalization flows will be modeled as explicit,
-versioned semantic writes in Phase 3B.
+and temporary-placement finalization flows use the explicit versioned Phase 3B
+tools below.
+
+## Phase 3B guarded writes
+
+All Phase 3B creates require a unique `idempotency_key`; exact retries replay
+the first result and changed-payload reuse fails. Existing-resource operations
+also require the `base_version` returned by the corresponding read. The gateway
+freshly reads explicit IDs, compares expected pet/helper/counterparty names or
+message content where relevant, lets Meo enforce ownership and state, and then
+verifies the resulting stable state. Create/update tools are non-read-only and
+all lifecycle/delete tools are additionally destructive.
+
+- Placement writes accept only the four authority request types. Response and
+  transfer transitions use the actual lifecycle endpoints; the legacy no-op
+  request confirm/reject endpoints remain excluded.
+- Helper-profile create/update accepts stable city and pet-type IDs, normalized
+  contact items, care types, household flags, and optional private address and
+  contact fields. Photo imports reuse the public-HTTPS, DNS-pinning, redirect,
+  MIME, and byte-limit guard; chat images add the upstream 5 MiB limit.
+- Messaging creation is limited by Meo to direct `PlacementRequest` context and
+  an owner/helper pair with an existing response. Group chat is not exposed.
+  Text/image send, explicit mark-read, own-message soft deletion, and leave are
+  separate tools. Deleting a message requires its exact current content so a
+  stale conversational reference cannot select a different message. Lookup and
+  post-write verification follow at most ten 100-message pages; older targets
+  fail with `target_not_in_bounded_history` instead of mutating blindly.
 
 ## Errors
 
@@ -548,6 +601,8 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 | `invitation_mismatch` | no | A fresh preview does not match the caller's exact expected pet or role |
 | `invitation_inactive` | no | The invitation is expired, revoked, declined, accepted, or otherwise unusable |
 | `last_owner_conflict` | no | The requested relationship change would leave the pet without an owner |
+| `target_mismatch` | no | A fresh read does not match the caller's explicit expected pet, helper, recipient, response, transfer, photo, or message target |
+| `target_not_in_bounded_history` | no | A message target is older than the newest 1,000 messages inspected by the guarded write |
 
 Upstream `403` and `404` remain `upstream_forbidden` and
 `upstream_not_found`. No upstream response body is forwarded.

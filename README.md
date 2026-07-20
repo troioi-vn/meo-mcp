@@ -8,8 +8,8 @@ adapter, not a second implementation of its domain rules.
 
 The gateway exposes pet, core-health, habit, photo, microchip, pet-sharing,
 placement, helper-profile, and messaging workflows over stateless Streamable
-HTTP. Independent domain scopes delegate narrow abilities; Phase 3 currently
-ships placement, helper, and messaging reads before their separately reviewed
+HTTP. Independent domain scopes delegate narrow abilities; Phase 3 includes
+placement, helper-profile, and placement-context messaging reads and guarded
 writes. Pet photos intentionally reuse the pet scopes. Existing user-created
 generic PAT abilities remain compatible upstream.
 

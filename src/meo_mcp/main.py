@@ -35,6 +35,26 @@ class HabitEntryInput(BaseModel):
     value_int: int | None = None
 
 
+class HelperContactInput(BaseModel):
+    type: Literal[
+        "telegram",
+        "whatsapp",
+        "zalo",
+        "facebook",
+        "instagram",
+        "x_twitter",
+        "linkedin",
+        "tiktok",
+        "wechat",
+        "viber",
+        "line",
+        "website",
+        "email",
+        "other",
+    ]
+    value: str = Field(min_length=1, max_length=255)
+
+
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
@@ -913,6 +933,391 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def get_unread_message_count() -> CallToolResult:
         """Get the authenticated user's total unread message count."""
         return await call(api.get_unread_message_count)
+
+    @server.tool(annotations=create_annotations)
+    async def create_placement_request(
+        pet_id: int,
+        expected_pet_name: str,
+        request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"],
+        start_date: date,
+        idempotency_key: str,
+        end_date: date | None = None,
+        notes: str | None = None,
+        expires_at: date | None = None,
+    ) -> CallToolResult:
+        """Create one explicit pet placement request and verify its stable ID."""
+        return await call(
+            api.create_placement_request,
+            pet_id,
+            expected_pet_name,
+            request_type,
+            start_date,
+            idempotency_key,
+            end_date,
+            notes,
+            expires_at,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_placement_request(
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete an owned placement request after an exact fresh preview."""
+        return await call(
+            api.delete_placement_request,
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def respond_to_placement_request(
+        placement_request_id: int,
+        helper_profile_id: int,
+        expected_pet_name: str,
+        idempotency_key: str,
+        message: str | None = None,
+    ) -> CallToolResult:
+        """Submit one helper profile response to an explicit placement request."""
+        return await call(
+            api.respond_to_placement_request,
+            placement_request_id,
+            helper_profile_id,
+            expected_pet_name,
+            idempotency_key,
+            message,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def accept_placement_response(
+        placement_request_id: int,
+        response_id: int,
+        expected_helper_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Accept an exact owner-reviewed response and begin its handover lifecycle."""
+        return await call(
+            api.accept_placement_response,
+            placement_request_id,
+            response_id,
+            expected_helper_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def reject_placement_response(
+        placement_request_id: int,
+        response_id: int,
+        expected_helper_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Reject an exact owner-reviewed placement response."""
+        return await call(
+            api.reject_placement_response,
+            placement_request_id,
+            response_id,
+            expected_helper_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def cancel_placement_response(
+        placement_request_id: int, response_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Cancel the caller's explicit current placement response."""
+        return await call(
+            api.cancel_placement_response,
+            placement_request_id,
+            response_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def confirm_pet_transfer(
+        placement_request_id: int, transfer_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Confirm receipt for the caller's exact pending pet handover."""
+        return await call(
+            api.confirm_pet_transfer,
+            placement_request_id,
+            transfer_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def reject_pet_transfer(
+        placement_request_id: int, transfer_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Reject the caller's exact pending pet handover."""
+        return await call(
+            api.reject_pet_transfer,
+            placement_request_id,
+            transfer_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def cancel_pet_transfer(
+        placement_request_id: int, transfer_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Cancel the caller's exact initiated pending pet handover."""
+        return await call(
+            api.cancel_pet_transfer,
+            placement_request_id,
+            transfer_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def finalize_temporary_placement(
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """End an active temporary placement after an exact owner preview."""
+        return await call(
+            api.finalize_temporary_placement,
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def create_helper_profile(
+        country: str,
+        city_ids: list[int],
+        phone_number: str,
+        experience: str,
+        has_pets: bool,
+        has_children: bool,
+        request_types: list[Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]],
+        idempotency_key: str,
+        state: str | None = None,
+        address: str | None = None,
+        zip_code: str | None = None,
+        offer: str | None = None,
+        contact_details: list[HelperContactInput] | None = None,
+        pet_type_ids: list[int] | None = None,
+    ) -> CallToolResult:
+        """Create and verify one private helper profile using stable location IDs."""
+        contacts = [item.model_dump() for item in contact_details or []]
+        return await call(
+            api.create_helper_profile,
+            country,
+            city_ids,
+            phone_number,
+            experience,
+            has_pets,
+            has_children,
+            request_types,
+            idempotency_key,
+            state,
+            address,
+            zip_code,
+            offer,
+            contacts,
+            pet_type_ids,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_helper_profile(
+        helper_profile_id: int,
+        base_version: str,
+        idempotency_key: str,
+        country: str | None = None,
+        city_ids: list[int] | None = None,
+        phone_number: str | None = None,
+        experience: str | None = None,
+        has_pets: bool | None = None,
+        has_children: bool | None = None,
+        request_types: list[Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]]
+        | None = None,
+        state: str | None = None,
+        address: str | None = None,
+        zip_code: str | None = None,
+        offer: str | None = None,
+        contact_details: list[HelperContactInput] | None = None,
+        pet_type_ids: list[int] | None = None,
+        status: Literal["private", "public"] | None = None,
+    ) -> CallToolResult:
+        """Update selected fields on one exact helper profile and version."""
+        changes = {
+            "country": country,
+            "city_ids": city_ids,
+            "phone_number": phone_number,
+            "experience": experience,
+            "has_pets": has_pets,
+            "has_children": has_children,
+            "request_types": request_types,
+            "state": state,
+            "address": address,
+            "zip_code": zip_code,
+            "offer": offer,
+            "contact_details": [item.model_dump() for item in contact_details]
+            if contact_details is not None
+            else None,
+            "pet_type_ids": pet_type_ids,
+            "status": status,
+        }
+        return await call(
+            api.update_helper_profile, helper_profile_id, base_version, idempotency_key, **changes
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def archive_helper_profile(
+        helper_profile_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Archive one exact helper profile when it has no placement responses."""
+        return await call(
+            api.archive_helper_profile, helper_profile_id, base_version, idempotency_key
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def restore_helper_profile(
+        helper_profile_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Restore one exact archived helper profile as private."""
+        return await call(
+            api.restore_helper_profile, helper_profile_id, base_version, idempotency_key
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_helper_profile(
+        helper_profile_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Permanently delete one exact unused helper profile and its photos."""
+        return await call(
+            api.delete_helper_profile, helper_profile_id, base_version, idempotency_key
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def upload_helper_profile_photo_from_url(
+        helper_profile_id: int, source_url: str, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Import one bounded public HTTPS image into an exact helper profile."""
+        return await call(
+            api.upload_helper_profile_photo_from_url,
+            helper_profile_id,
+            source_url,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def set_primary_helper_profile_photo(
+        helper_profile_id: int, photo_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Make one exact existing helper-profile photo primary."""
+        return await call(
+            api.set_primary_helper_profile_photo,
+            helper_profile_id,
+            photo_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_helper_profile_photo(
+        helper_profile_id: int, photo_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Permanently delete one exact helper-profile photo."""
+        return await call(
+            api.delete_helper_profile_photo,
+            helper_profile_id,
+            photo_id,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def open_placement_chat(
+        placement_request_id: int,
+        recipient_user_id: int,
+        expected_recipient_name: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Open or find a direct chat with an exact placement counterparty."""
+        return await call(
+            api.open_placement_chat,
+            placement_request_id,
+            recipient_user_id,
+            expected_recipient_name,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def send_chat_message(
+        chat_id: int, expected_recipient_user_id: int, content: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Send one replay-safe text message to an exact chat counterparty."""
+        return await call(
+            api.send_chat_message, chat_id, expected_recipient_user_id, content, idempotency_key
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def send_chat_image_from_url(
+        chat_id: int, expected_recipient_user_id: int, source_url: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Send one bounded public HTTPS image to an exact chat counterparty."""
+        return await call(
+            api.send_chat_image_from_url,
+            chat_id,
+            expected_recipient_user_id,
+            source_url,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def mark_chat_read(
+        chat_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Explicitly advance the caller's read receipt for one chat."""
+        return await call(api.mark_chat_read, chat_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def delete_own_message(
+        chat_id: int,
+        message_id: int,
+        expected_content: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Soft-delete one exact own message after matching its current content."""
+        return await call(
+            api.delete_own_message,
+            chat_id,
+            message_id,
+            expected_content,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def leave_chat(
+        chat_id: int, expected_recipient_user_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Leave one exact direct chat after a fresh participant preview."""
+        return await call(
+            api.leave_chat, chat_id, expected_recipient_user_id, base_version, idempotency_key
+        )
 
     async def health(_: Request) -> Response:
         return JSONResponse({"status": "ok"})

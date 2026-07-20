@@ -202,6 +202,30 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "get_chat",
         "list_chat_messages",
         "get_unread_message_count",
+        "create_placement_request",
+        "delete_placement_request",
+        "respond_to_placement_request",
+        "accept_placement_response",
+        "reject_placement_response",
+        "cancel_placement_response",
+        "confirm_pet_transfer",
+        "reject_pet_transfer",
+        "cancel_pet_transfer",
+        "finalize_temporary_placement",
+        "create_helper_profile",
+        "update_helper_profile",
+        "archive_helper_profile",
+        "restore_helper_profile",
+        "delete_helper_profile",
+        "upload_helper_profile_photo_from_url",
+        "set_primary_helper_profile_photo",
+        "delete_helper_profile_photo",
+        "open_placement_chat",
+        "send_chat_message",
+        "send_chat_image_from_url",
+        "mark_chat_read",
+        "delete_own_message",
+        "leave_chat",
     ]
     assert tools.json()["result"]["tools"][0]["annotations"]["readOnlyHint"] is True
     by_name = {tool["name"]: tool for tool in tools.json()["result"]["tools"]}
@@ -210,6 +234,8 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
     assert by_name["list_habits"]["annotations"]["readOnlyHint"] is True
     assert by_name["list_chat_messages"]["annotations"]["readOnlyHint"] is True
     assert by_name["create_habit"]["annotations"]["destructiveHint"] is False
+    assert by_name["create_placement_request"]["annotations"]["destructiveHint"] is False
+    assert by_name["delete_own_message"]["annotations"]["destructiveHint"] is True
     assert by_name["delete_habit"]["annotations"]["destructiveHint"] is True
     assert by_name["save_habit_day_entries"]["inputSchema"]["$defs"]["HabitEntryInput"][
         "required"

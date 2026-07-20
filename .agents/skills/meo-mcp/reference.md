@@ -35,6 +35,9 @@ contributors can use local values derived from `.env.example`.
 | Placement reads: opportunities/request/viewer context/responses | filters or explicit request ID | narrowed public or role-shaped placement state | `placement:read` | `placement:read` | placement list/detail/context/response endpoints | read-only | High |
 | Helper reads: public search/detail, visible private profiles, locations | filters or explicit profile ID | privacy-shaped helper profiles or reference options | `helpers:read` | `helpers:read` | helper profile and country/city endpoints | read-only | High |
 | Messaging reads: chats/detail/messages/unread | explicit chat ID and optional cursor | narrowed private chat/message state without read receipt | `messages:read` | `messages:read` | messaging read endpoints | read-only | Critical |
+| Placement writes | explicit request/response/transfer IDs, expected names, version, idempotency key | verified lifecycle result | `placement:read` + `placement:write` | matching abilities | placement/response/transfer endpoints | write/destructive | Critical |
+| Helper-profile writes | explicit profile/photo IDs, version, idempotency key | verified private profile state | `helpers:read` + `helpers:write` | matching abilities | helper lifecycle/photo endpoints | write/destructive | Critical |
+| Placement messaging writes | explicit chat/counterparty/message IDs, expected content where deleting, version, idempotency key | verified chat/message state | `messages:read` + `messages:write` (plus `placement:read` to open) | matching abilities | messaging endpoints | write/destructive | Critical |
 
 Consult the canonical catalog for exact schemas and choose the narrowest
 non-empty scope subset needed. Write scopes are paired with the corresponding

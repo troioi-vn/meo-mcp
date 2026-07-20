@@ -45,8 +45,11 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
         "sharing:read",
         "sharing:write",
         "placement:read",
+        "placement:write",
         "helpers:read",
+        "helpers:write",
         "messages:read",
+        "messages:write",
     ]
     assert "`list_pets`" in catalog
     assert "`pets:read`" in catalog
@@ -64,6 +67,9 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     assert "`list_placement_opportunities`" in catalog
     assert "`search_helper_profiles`" in catalog
     assert "`list_chat_messages`" in catalog
+    assert "`create_placement_request`" in catalog
+    assert "`create_helper_profile`" in catalog
+    assert "`send_chat_message`" in catalog
 
 
 def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:

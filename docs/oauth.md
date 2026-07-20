@@ -84,8 +84,11 @@ Detailed behavior:
 | `microchips:read` | View pet microchip identity records | `microchips:read` (legacy PAT: `read`) | Microchip list/detail tools |
 | `sharing:read` | View pet collaborators, eligible suggestions, and invitations | `sharing:read` (legacy PAT: `read`) | Pet-sharing, suggestion, invitation list/preview tools |
 | `placement:read` | View open placement opportunities and role-shaped request/response state | `placement:read` (legacy PAT: `read`) | Placement opportunity, detail, viewer-context, and owner response tools |
+| `placement:write` | Create and manage placement requests, responses, transfers, and finalization | `placement:write` (legacy PAT: `create`/`update`/`delete`) | Guarded placement lifecycle tools |
 | `helpers:read` | Browse public helpers and view helper profiles available to the caller | `helpers:read` (legacy PAT: `read`) | Public/private helper reads and location options |
+| `helpers:write` | Create and manage the caller's helper profiles and photos | `helpers:write` (legacy PAT: `create`/`update`/`delete`) | Guarded helper lifecycle and photo tools |
 | `messages:read` | View the caller's chats, message bodies, and unread count without creating read receipts | `messages:read` (legacy PAT: `read`) | Chat, message, and unread-count tools |
+| `messages:write` | Open placement chats, send/remove messages, mark read, and leave chats | `messages:write` (legacy PAT: `create`/`update`/`delete`) | Guarded direct messaging tools |
 | `pets:write` | Create and edit manageable pet profiles | `pet:write` (legacy PAT: `create`/`update`) | Pet create/update, paired with `pets:read` |
 | `health:write` | Add and edit manageable weight, vaccination, and medical records | `health:write` (legacy PAT: `create`/`update`) | Health create/update, paired with `health:read` |
 | `habits:write` | Create and manage habits and daily entries | `habits:write` (legacy PAT: `create`/`update`/`delete`) | Habit writes, paired with `habits:read` |

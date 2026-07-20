@@ -56,8 +56,11 @@ ALLOWED_SCOPES = [
     "sharing:read",
     "sharing:write",
     "placement:read",
+    "placement:write",
     "helpers:read",
+    "helpers:write",
     "messages:read",
+    "messages:write",
 ]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 

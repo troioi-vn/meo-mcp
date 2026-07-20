@@ -75,6 +75,13 @@ relationship targets. Invitation preview/accept/decline accepts either the
 64-character token or the exact Meo HTTPS invitation URL; clients must treat
 both as credentials and must not log or paste them into conversation history.
 
+Phase 3 writes pair each independent write scope with its matching read scope:
+`placement:read,placement:write`, `helpers:read,helpers:write`, or
+`messages:read,messages:write`. Opening a placement chat additionally requires
+`placement:read`. These high-impact tools require explicit stable targets,
+fresh expected names or status where applicable, versions for existing
+resources, unique idempotency keys, and post-write verification.
+
 Alternatively, open **Settings → MCP servers**, add a Streamable HTTP server,
 then select **Authenticate** and restart the app or IDE extension when prompted.
 In the terminal UI, `/mcp` shows configured servers and tools. See OpenAI's
