@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 4B2 complete; Phase 4B3 is next)
+Status: in progress (Phases 1A through 4B3 complete; final coverage audit is next)
 
 ## Goal
 
@@ -171,12 +171,12 @@ deployed the tool surface and matching error translation.
 - [x] Phase 4B2: separately reviewed finance/ledger and ledger-invitation writes
       with narrow scopes and audit-friendly semantics, followed by its own
       tested/deployed/accepted checkpoint
-- [ ] Phase 4B3: notification mark-read/preferences, safe profile and owner-
+- [x] Phase 4B3: notification mark-read/preferences, safe profile and owner-
       weight writes, and account-invitation create/revoke, followed by its own
       tested/deployed/accepted checkpoint
-- [ ] Phase 4B3: keep password change and account deletion out of MCP; expose no
+- [x] Phase 4B3: keep password change and account deletion out of MCP; expose no
       notification action unless the registered handler is an end-user action
-- [ ] Phase 4B: all five write scopes, Meo abilities, tests, deployments, and
+- [x] Phase 4B: all five write scopes, Meo abilities, tests, deployments, and
       real-client smokes complete
 - [ ] Coverage checklist against OpenAPI tags: every in-scope domain has at least
       agent-useful read coverage; writes where product wants agent action
@@ -219,6 +219,17 @@ invitation consume paths remained covered by automated Meo tests. Meo pipeline
 invitation material, personal financial payloads, or smoke tokens were
 retained. Both GPT connector environments remained healthy and able to reach
 Meo.
+
+Phase 4B3 development acceptance on 2026-07-21 used a fresh six-scope Codex
+grant and discovered all 155 tools, including the 12 notification, safe self-
+profile, owner-weight, and account-invitation additions. It verified an exact
+notification-preference no-op, a zero-unread atomic mark-all receipt, a same-
+name versioned profile update, temporary owner-weight create/update/delete,
+and generic account-invitation create/revoke. Temporary health data was deleted
+and no active bearer invitation remained. Meo pipeline `#322` deployed
+`5a81a9db`; gateway pipeline `#39` deployed `12a37cf`. Post-acceptance gateway
+logs contained no credential-pattern matches. Both GPT connector environments
+remained healthy and able to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
