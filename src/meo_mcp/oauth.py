@@ -44,7 +44,7 @@ ACCESS_TOKEN_TTL = timedelta(hours=1)
 AUTHORIZATION_CODE_TTL = timedelta(minutes=5)
 CONSENT_TTL = timedelta(minutes=10)
 REFRESH_TOKEN_TTL = timedelta(days=90)
-ALLOWED_SCOPES = ["pets:read", "health:read"]
+ALLOWED_SCOPES = ["pets:read", "health:read", "pets:write", "health:write"]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 
@@ -114,7 +114,7 @@ class DatabaseOAuthProvider(
         ):
             raise AuthorizeError(
                 "invalid_scope",
-                "Request a non-empty subset of pets:read and health:read without duplicates.",
+                "Request a non-empty subset of the advertised scopes without duplicates.",
             )
         request = AuthorizationRequest(
             client_id=client.client_id or "",

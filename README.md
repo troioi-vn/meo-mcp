@@ -6,10 +6,11 @@ tools that delegate to the Meo Laravel API with a narrowly scoped Sanctum token.
 Meo remains the product and authorization authority; this repository is a thin
 adapter, not a second implementation of its domain rules.
 
-The development gateway exposes read-only pet discovery/profile and core-health
-tools over stateless Streamable HTTP. Independent `pets:read` and `health:read`
-scopes delegate matching domain abilities; existing user-created `read` PATs
-remain compatible upstream.
+The gateway exposes pet discovery/profile and core-health reads plus guarded
+create/update workflows over stateless Streamable HTTP. Independent
+`pets:read`, `health:read`, `pets:write`, and `health:write` scopes delegate
+narrow domain abilities. Existing user-created generic PAT abilities remain
+compatible upstream.
 
 ## Start here
 

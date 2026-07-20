@@ -24,12 +24,16 @@ contributors can use local values derived from `.env.example`.
 | Weight: `list_weights`, `get_weight` | explicit pet/record IDs | narrowed weight records | `health:read` | `health:read` | weight list/detail | read-only | Moderate |
 | Vaccination: `list_vaccinations`, `get_vaccination` | explicit pet/record IDs | narrowed vaccination records | `health:read` | `health:read` | vaccination list/detail | read-only | Moderate |
 | Medical: `list_medical_records`, `get_medical_record` | explicit pet/record IDs | narrowed medical records | `health:read` | `health:read` | medical list/detail | read-only | Moderate |
+| Pet writes: `create_pet`, `update_pet` | explicit values/ID, idempotency key, update version | verified narrowed pet | `pets:read pets:write` | `pets:read pet:write` | pet type/create/update/detail | create or update | Moderate |
+| Health writes: add/update weight, vaccination, medical record | explicit pet/record IDs, idempotency key, update version | verified narrowed record | `health:read health:write` | matching abilities | health create/update/detail | create or update | Moderate |
 
-There are no write tools or write scopes. Consult the canonical catalog for
-exact schemas and choose the narrowest non-empty scope subset needed. A
-client-side connection or authentication helper is not a gateway tool.
-MCP exchange tokens use the domain abilities; existing user-created PATs with
-the legacy `read` ability remain compatible at the corresponding Meo endpoints.
+Consult the canonical catalog for exact schemas and choose the narrowest
+non-empty scope subset needed. Write scopes are paired with the corresponding
+read scope so tools can preflight and verify. A client-side connection or
+authentication helper is not a gateway tool. MCP exchange tokens use the
+domain abilities; existing user-created generic PAT abilities remain compatible
+at the corresponding Meo endpoints (`read` for reads and `create`/`update` for
+the Phase 1B write routes).
 
 ## Unauthenticated probes
 
@@ -123,6 +127,10 @@ Unset the temporary environment variable when finished.
 | `upstream_not_found` (`404`) | Meo resource | Refresh target discovery before retrying |
 | `upstream_rate_limited` (`429`) | Meo throttling | Back off and retry later |
 | Retryable `upstream_server_error` | Meo availability | Retry later; preserve request context |
+| `duplicate_candidate` | Pet-create preflight | Inspect the stable candidate IDs before choosing a distinct create intent |
+| `idempotency_conflict` / `idempotency_in_progress` | Write retry | Reuse keys only for exact retries; wait on an in-progress request |
+| `concurrency_conflict` | Update preflight | Re-read the explicit target and reconcile against its new version |
+| `post_write_verification_failed` | Write read-back | Treat the outcome as uncertain and read the stable target before retrying |
 
 Tool failures use MCP `isError: true` and stable JSON fields `code`, `message`,
 `retryable`, and optional `upstream_status`. Read

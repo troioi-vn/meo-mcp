@@ -9,7 +9,7 @@
 
 Do not configure a bearer token manually. Point the client at
 `<MCP_BASE_URL>/mcp`; OAuth discovery supplies the authorization server and the
-currently advertised `pets:read` and `health:read` scopes.
+currently advertised pet/health read and write scopes.
 
 ## Generic flow
 
@@ -18,7 +18,7 @@ currently advertised `pets:read` and `health:read` scopes.
 2. Choose **Authenticate**, **Connect**, or the client's equivalent OAuth action.
 3. Sign in to Meo, review the client name and scopes, and approve or deny.
 4. Return to the client. It should initialize the `Meo Mai Moi` server and
-   discover the read tools in [tools.md](tools.md).
+   discover the tools in [tools.md](tools.md).
 5. Call a tool covered by the approved scopes. For example, `list_pets` with
    an empty input returns a top-level `pets` array.
 
@@ -55,6 +55,12 @@ codex mcp list
 Request only `pets:read` when the client needs pet profiles but not health
 history. OAuth accepts either narrow scope or the documented combination, and
 each tool still enforces its own required scope.
+
+Keep the read-only command above for ordinary inspection. Request
+`pets:write` together with `pets:read`, or `health:write` together with
+`health:read`, only for an intended write workflow. Write tools require stable
+IDs, idempotency keys, and—for updates—the version returned by the matching
+read tool.
 
 Alternatively, open **Settings → MCP servers**, add a Streamable HTTP server,
 then select **Authenticate** and restart the app or IDE extension when prompted.

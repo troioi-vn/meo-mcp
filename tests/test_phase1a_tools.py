@@ -154,6 +154,7 @@ async def test_phase1a_pet_and_health_tools_cross_asgi_boundary(tmp_path) -> Non
         "id": 2,
         "weight_kg": 4.5,
         "record_date": "2026-01-01",
+        "version": None,
     }
     assert results["vaccination"]["structuredContent"]["vaccination"]["vaccine_name"] == "Rabies"
     assert results["record"]["structuredContent"]["medical_record"]["record_type"] == "checkup"

@@ -80,14 +80,14 @@ overview calls. Only aggregate counts and status flags were retained.
 
 ## Phase 1B — Low-risk GPT-connector writes
 
-- [ ] Add pet create/update and weight/vaccination/medical-record add/update only
+- [x] Add pet create/update and weight/vaccination/medical-record add/update only
       after Phase 1A is stable
-- [ ] Define narrow write scopes, consent copy, matching Sanctum abilities, and
+- [x] Define narrow write scopes, consent copy, matching Sanctum abilities, and
       explicit non-destructive/destructive annotations
-- [ ] Require explicit stable target IDs; do not let fuzzy search select a write target
-- [ ] Define idempotency and duplicate-submission behavior for every create action
-- [ ] Handle concurrent updates explicitly where the Meo API exposes versions/timestamps
-- [ ] Test validation, authorization, duplicate requests, stale updates, and upstream failure
+- [x] Require explicit stable target IDs; do not let fuzzy search select a write target
+- [x] Define idempotency and duplicate-submission behavior for every create action
+- [x] Handle concurrent updates explicitly where the Meo API exposes versions/timestamps
+- [x] Test validation, authorization, duplicate requests, stale updates, and upstream failure
 - [ ] Run read-before-write and post-write verification through a real development client
 
 ## Phase 2 — Remaining pet-care

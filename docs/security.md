@@ -76,6 +76,12 @@ Tool annotations and descriptions are hints to clients. Actual safety comes
 from OAuth scopes, upstream Sanctum abilities, stable target validation,
 idempotency/concurrency controls for writes, and Meo's permission checks.
 
+Current writes require a caller-supplied idempotency key that Meo binds to the
+authenticated user and normalized request fingerprint. Updates additionally
+require the target's last-read version; Meo rejects stale versions before
+mutation. The gateway reads every successful write back through the normal
+read scope, so write scopes alone cannot bypass inspection and verification.
+
 ## Logging and errors
 
 Structured logging redacts fields named for access/refresh tokens, API keys,

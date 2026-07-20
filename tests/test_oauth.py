@@ -107,7 +107,7 @@ async def test_dcr_accepts_only_public_clients_and_persists_no_secret(tmp_path) 
             json={
                 "redirect_uris": ["https://client.example.test/callback"],
                 "token_endpoint_auth_method": "none",
-                "scope": "pets:write",
+                "scope": "messages:write",
             },
         )
         invalid_redirect = await client.post(

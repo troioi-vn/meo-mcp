@@ -86,6 +86,11 @@ Current tool error codes:
 | `scope_required` | no | — | Reauthorize with the tool's required scope |
 | `authorization_inactive` | no | — | Reconnect the Meo account |
 | `validation_error` | no | — | Correct the tool input before retrying |
+| `duplicate_candidate` | no | `409` | Inspect the existing stable pet IDs; create only if this is a distinct pet intent |
+| `idempotency_conflict` | no | `409` | Use the original payload or a new key for a genuinely new intent |
+| `idempotency_in_progress` | yes | `425` | Retry later with the same key and payload |
+| `concurrency_conflict` | no | `409` or — | Re-read the explicit target and reconcile before updating |
+| `post_write_verification_failed` | yes | — | The write may have succeeded; read the stable target before any retry |
 | `upstream_unavailable` | yes | — | Retry later; no HTTP response was received |
 | `upstream_unauthorized` | no | `401` | Reconnect; delegated authorization was rejected |
 | `upstream_forbidden` | no | `403` | Stop or change the request; Meo denied access |

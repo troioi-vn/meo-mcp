@@ -30,15 +30,18 @@ def test_relative_documentation_links_resolve() -> None:
     assert missing == []
 
 
-def test_tool_catalog_matches_the_implemented_mvp_mapping() -> None:
+def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     catalog = (ROOT / "docs" / "tools.md").read_text()
 
-    assert ALLOWED_SCOPES == ["pets:read", "health:read"]
+    assert ALLOWED_SCOPES == ["pets:read", "health:read", "pets:write", "health:write"]
     assert "`list_pets`" in catalog
     assert "`pets:read`" in catalog
     assert "`read`" in catalog
     assert "`GET /api/my-pets`" in catalog
-    assert "No write scope or write tool is currently available." in catalog
+    assert "`create_pet`" in catalog
+    assert "`health:write`" in catalog
+    assert "idempotency_key" in catalog
+    assert "base_version" in catalog
 
 
 def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:

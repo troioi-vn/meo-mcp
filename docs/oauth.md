@@ -80,6 +80,8 @@ Detailed behavior:
 |-----------|-----------------|----------------------------|---------|
 | `pets:read` | View the user's pet profiles and public pet-type reference data | `pets:read` (legacy PAT: `read`) | Pet list/find/detail, pet types, overview |
 | `health:read` | View weight, vaccination, and medical history for accessible pets | `health:read` (legacy PAT: `read`) | Health list/detail tools, overview |
+| `pets:write` | Create and edit manageable pet profiles | `pet:write` (legacy PAT: `create`/`update`) | Pet create/update, paired with `pets:read` |
+| `health:write` | Add and edit manageable weight, vaccination, and medical records | `health:write` (legacy PAT: `create`/`update`) | Health create/update, paired with `health:read` |
 
 The complete tool-level mapping is in [tools.md](tools.md). Adding a scope
 requires coordinated gateway OAuth metadata, tool enforcement, Meo consent

@@ -27,8 +27,18 @@ part of the end-user tool surface.
 | `get_vaccination` | Live | Retrieve one explicit vaccination record | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}` | Read | Moderate; pet medical data |
 | `list_medical_records` | Live | List one pet's paginated medical records, optionally by record type | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/medical-records` | Read | Moderate; sensitive pet medical history |
 | `get_medical_record` | Live | Retrieve one explicit medical record | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/medical-records/{record_id}` | Read | Moderate; sensitive pet medical data |
+| `create_pet` | Proposed (Phase 1B) | Create a pet profile with an authoritative exact-name/species duplicate guard | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `create`) | `GET /api/pet-types`; `POST /api/pets`; `GET /api/pets/{pet_id}` | Create | Moderate; creates a durable personal profile |
+| `update_pet` | Proposed (Phase 1B) | Correct selected profile fields for one explicit pet and version | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}`; `GET /api/pet-types` when species changes; `PUT /api/pets/{pet_id}`; verification `GET` | Update | Moderate; overwrites profile fields |
+| `add_weight` | Proposed (Phase 1B) | Record one dated weight for an explicit pet | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/weights`; `GET /api/pets/{pet_id}/weights/{weight_id}` | Create | Moderate; creates pet health data |
+| `update_weight` | Proposed (Phase 1B) | Correct one explicit weight record at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/weights/{weight_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites pet health data |
+| `add_vaccination` | Proposed (Phase 1B) | Record one vaccination for an explicit pet | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/vaccinations`; `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}` | Create | Moderate; creates pet medical data |
+| `update_vaccination` | Proposed (Phase 1B) | Correct one explicit vaccination at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites pet medical data |
+| `add_medical_record` | Proposed (Phase 1B) | Record one dated medical event for an explicit pet | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/medical-records`; `GET /api/pets/{pet_id}/medical-records/{record_id}` | Create | Moderate; creates sensitive medical data |
+| `update_medical_record` | Proposed (Phase 1B) | Correct one explicit medical record at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/medical-records/{record_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites sensitive medical data |
 
-No write scope or write tool is currently available.
+The Proposed rows define the Phase 1B contract before implementation. They do
+not become discoverable until the coordinated Meo ability and consent changes,
+gateway implementation, tests, deployment, and live acceptance are complete.
 
 ## Scope model
 
@@ -36,6 +46,8 @@ No write scope or write tool is currently available.
 |-----------|-----------------|-----------------------------|-------|
 | `pets:read` | View the user's pet profiles and public pet-type reference data | `pets:read` | Pet list/find/detail; pet types; overview |
 | `health:read` | View weights, vaccinations, and medical records for pets the user may access | `health:read` | Health lists/details; overview |
+| `pets:write` | Create and edit pet profiles the user may manage | `pet:write` | Pet create/update; always paired with `pets:read` by these tools |
+| `health:write` | Add and edit weight, vaccination, and medical records for pets the user may manage | `health:write` | Health create/update; always paired with `health:read` by these tools |
 
 Scopes are independently requestable non-empty subsets. The default dynamic
 registration scope set includes both so general clients can discover the whole
@@ -45,7 +57,7 @@ for existing user-created PATs.
 
 ## Shared annotations
 
-All current and Phase 1A tools declare:
+All current read tools declare:
 
 | Annotation | Value | Meaning |
 |------------|-------|---------|
@@ -56,6 +68,12 @@ All current and Phase 1A tools declare:
 
 Annotations help clients classify tools; enforcement comes from OAuth scope,
 delegated Sanctum ability, explicit IDs, and Meo's resource authorization.
+
+Phase 1B create tools declare `readOnlyHint: false`,
+`destructiveHint: false`, `idempotentHint: true`, and `openWorldHint: true`.
+Update tools differ only in `destructiveHint: true`, because they overwrite
+existing fields. Their idempotency hint depends on the required stable
+`idempotency_key`, not on a claim in the description.
 
 ## Shared schemas
 
@@ -118,7 +136,8 @@ do not become part of the MCP contract.
 - **Output:** `{ "pet": PetDetail }`, where `PetDetail` contains only `id`,
   `name`, `species`, `sex`, `age`, `birthday`, `birthday_year`,
   `birthday_month`, `birthday_day`, `birthday_precision`, `country`, `state`,
-  `city`, `description`, `status`, and `photo_url`. It excludes relationships,
+  `city`, `description`, `status`, `photo_url`, and `version` (the upstream
+  `updated_at` timestamp used for optimistic concurrency). It excludes relationships,
   placement responses, creator/user IDs, street address, and arbitrary
   additive upstream fields.
 
@@ -161,7 +180,8 @@ the positive record ID, and Meo verifies that the record belongs to that pet.
 - `list_weights` output: `{ "weights": Weight[], "pagination": Pagination }`.
 - `get_weight` input: `pet_id`, `weight_id`.
 - `get_weight` output: `{ "weight": Weight }`.
-- `Weight`: `id`, `weight_kg` as a positive number, and ISO `record_date`.
+- `Weight`: `id`, `weight_kg` as a positive number, ISO `record_date`, and
+  nullable ISO timestamp `version`.
 
 ### Vaccinations
 
@@ -173,7 +193,7 @@ the positive record ID, and Meo verifies that the record belongs to that pet.
 - `get_vaccination` output: `{ "vaccination": Vaccination }`.
 - `Vaccination`: `id`, `vaccine_name`, ISO `administered_at`, nullable ISO
   `due_at`, nullable `notes`, nullable ISO timestamp `completed_at`, and
-  nullable `photo_url`.
+  nullable `photo_url`, and nullable ISO timestamp `version`.
 
 ### Medical records
 
@@ -184,8 +204,66 @@ the positive record ID, and Meo verifies that the record belongs to that pet.
 - `get_medical_record` input: `pet_id`, `record_id`.
 - `get_medical_record` output: `{ "medical_record": MedicalRecord }`.
 - `MedicalRecord`: `id`, `record_type`, nullable `description`, nullable ISO
-  `record_date`, nullable `vet_name`, and `photos` narrowed to `id`, `url`,
-  `thumb_url`, and `medium_url`.
+  `record_date`, nullable `vet_name`, nullable ISO timestamp `version`, and
+  `photos` narrowed to `id`, `url`, `thumb_url`, and `medium_url`.
+
+## Phase 1B write tools
+
+Every write requires an `idempotency_key` containing 1–128 ASCII letters,
+digits, underscores, or hyphens. Repeating the same key with the same normalized
+method, path, and payload replays Meo's stored successful response. Reusing it
+for a different request returns `idempotency_conflict`; an in-flight duplicate
+returns retryable `idempotency_in_progress`. Use a new key only for a genuinely
+new user intent.
+
+Every update also requires `base_version`, copied exactly from the target read
+tool's `version`. The gateway reads the explicit target before writing, Meo
+atomically rejects a stale version, and the gateway reads the resource back
+after success. A stale version returns `concurrency_conflict`; callers must
+re-read and reconcile rather than blind-retry. Creates are also read back by
+the stable ID returned from Meo.
+
+### Pet writes
+
+- `create_pet` input: required `name`, exact supported `species`, two-letter
+  `country`, and `idempotency_key`; optional `sex` (`male | female |
+  not_specified | unknown`), exactly one of `birth_date`, `birth_month_year`,
+  or `age_months`, optional `description`, and `allow_duplicate` defaulting to
+  `false`.
+- Before creating, the gateway resolves species through `list_pet_types`. Meo
+  serializes MCP pet creates per user and performs the exact case-insensitive
+  name/species check inside the create transaction. It returns
+  `duplicate_candidate` with stable existing IDs unless `allow_duplicate` is
+  explicitly true. Because Meo's idempotency middleware runs before that guard,
+  an exact retry replays the original success instead of being mistaken for a
+  new duplicate.
+- `create_pet` output: `{ "pet": PetDetail, "verified": true }`.
+- `update_pet` input: explicit positive `pet_id`, `base_version`,
+  `idempotency_key`, and at least one of `name`, `species`, `sex`, one birth
+  representation, or `description`. Fuzzy names are never accepted as targets.
+- `update_pet` output: `{ "pet": PetDetail, "verified": true }`.
+
+### Health writes
+
+- `add_weight`: positive `pet_id`, positive `weight_kg` up to 1000, explicit
+  ISO `record_date`, and `idempotency_key`. Meo permits one weight per pet/date;
+  another key for the same date is a validation failure.
+- `update_weight`: positive `pet_id` and `weight_id`, `base_version`,
+  `idempotency_key`, and at least one of `weight_kg` or `record_date`.
+- `add_vaccination`: positive `pet_id`, non-blank `vaccine_name`, ISO
+  `administered_at`, optional ISO `due_at` and `notes`, plus `idempotency_key`.
+  Meo rejects the same vaccine name/date for a pet.
+- `update_vaccination`: positive `pet_id` and `vaccination_id`, `base_version`,
+  `idempotency_key`, and at least one mutable vaccination field.
+- `add_medical_record`: positive `pet_id`, `record_type` enum `checkup |
+  deworming | flea_treatment | surgery | dental | other`, explicit ISO
+  `record_date`, optional `description` and `vet_name`, plus
+  `idempotency_key`. Different keys intentionally represent distinct events;
+  there is no unsafe fuzzy deduplication of medical history.
+- `update_medical_record`: positive `pet_id` and `record_id`, `base_version`,
+  `idempotency_key`, and at least one mutable medical-record field.
+- Health create/update outputs use the corresponding narrowed shared record
+  under `weight`, `vaccination`, or `medical_record`, plus `verified: true`.
 
 ## Errors
 
@@ -196,6 +274,11 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 |------|-----------|---------|
 | `validation_error` | no | Locally validated input is missing, blank, out of range, or inconsistent |
 | `upstream_validation_failed` | no | Meo rejected the normalized request with `422`; upstream field text is not forwarded |
+| `duplicate_candidate` | no | Pet create found an exact existing name/species match; inspect stable IDs before deciding whether this is a distinct pet |
+| `idempotency_conflict` | no | The idempotency key was reused for a different normalized write |
+| `idempotency_in_progress` | yes | The same idempotent write is still being processed; retry later with the same key |
+| `concurrency_conflict` | no | The supplied base version is stale; re-read and reconcile before another update |
+| `post_write_verification_failed` | yes | Meo accepted the write but its stable target could not be read back safely |
 
 Upstream `403` and `404` remain `upstream_forbidden` and
 `upstream_not_found`. No upstream response body is forwarded.
