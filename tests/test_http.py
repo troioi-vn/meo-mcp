@@ -159,11 +159,42 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "update_vaccination",
         "add_medical_record",
         "update_medical_record",
+        "list_habits",
+        "get_habit",
+        "get_habit_heatmap",
+        "get_habit_day_entries",
+        "create_habit",
+        "update_habit",
+        "save_habit_day_entries",
+        "archive_habit",
+        "restore_habit",
+        "delete_habit",
+        "list_pet_photos",
+        "upload_pet_photo_from_url",
+        "set_primary_pet_photo",
+        "delete_pet_photo",
+        "list_microchips",
+        "get_microchip",
+        "add_microchip",
+        "update_microchip",
+        "delete_microchip",
     ]
     assert tools.json()["result"]["tools"][0]["annotations"]["readOnlyHint"] is True
     by_name = {tool["name"]: tool for tool in tools.json()["result"]["tools"]}
     assert by_name["create_pet"]["annotations"]["destructiveHint"] is False
     assert by_name["update_pet"]["annotations"]["destructiveHint"] is True
+    assert by_name["list_habits"]["annotations"]["readOnlyHint"] is True
+    assert by_name["create_habit"]["annotations"]["destructiveHint"] is False
+    assert by_name["delete_habit"]["annotations"]["destructiveHint"] is True
+    assert by_name["save_habit_day_entries"]["inputSchema"]["$defs"]["HabitEntryInput"][
+        "required"
+    ] == ["pet_id"]
+    assert by_name["upload_pet_photo_from_url"]["inputSchema"]["required"] == [
+        "pet_id",
+        "base_version",
+        "source_url",
+        "idempotency_key",
+    ]
     assert called.status_code == 200
     assert json.loads(called.json()["result"]["content"][0]["text"]) == {
         "pets": [

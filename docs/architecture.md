@@ -62,7 +62,8 @@ the composed HTTP application and middleware. Alembic manages schema changes.
 | Data | System of record | Gateway behavior |
 |------|------------------|------------------|
 | User identity and account eligibility | Meo | Receives only an upstream user identifier after approved consent |
-| Pets and product permissions | Meo | Reads through documented user-facing APIs and narrows the response |
+| Pets, habits, photos, microchips, health records, and product permissions | Meo | Reads/writes through documented user-facing APIs and narrows responses |
+| Temporary remote photo bytes | External HTTPS source | Validates and streams at most 10 MiB to Meo; never persists the source body |
 | MCP client registration | meo-mcp | Stores public-client metadata; no client secret is accepted |
 | MCP authorization grants and tokens | meo-mcp | Stores grant state and only digests of client-facing codes/tokens |
 | Delegated Sanctum token | Meo issues; meo-mcp stores | Encrypts at rest and decrypts only for an upstream call or revocation |

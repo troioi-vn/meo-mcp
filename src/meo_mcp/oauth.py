@@ -44,7 +44,16 @@ ACCESS_TOKEN_TTL = timedelta(hours=1)
 AUTHORIZATION_CODE_TTL = timedelta(minutes=5)
 CONSENT_TTL = timedelta(minutes=10)
 REFRESH_TOKEN_TTL = timedelta(days=90)
-ALLOWED_SCOPES = ["pets:read", "health:read", "pets:write", "health:write"]
+ALLOWED_SCOPES = [
+    "pets:read",
+    "health:read",
+    "habits:read",
+    "microchips:read",
+    "pets:write",
+    "health:write",
+    "habits:write",
+    "microchips:write",
+]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 

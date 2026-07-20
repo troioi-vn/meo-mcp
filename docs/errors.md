@@ -91,6 +91,10 @@ Current tool error codes:
 | `idempotency_in_progress` | yes | `425` | Retry later with the same key and payload |
 | `concurrency_conflict` | no | `409` or — | Re-read the explicit target and reconcile before updating |
 | `post_write_verification_failed` | yes | — | The write may have succeeded; read the stable target before any retry |
+| `source_url_rejected` | no | — | Use a public HTTPS image URL on port 443 without credentials or fragments |
+| `source_image_invalid` | no | — | Supply a non-empty JPEG, PNG, WebP, or GIF response |
+| `source_image_too_large` | no | — | Supply an image no larger than 10 MiB |
+| `source_fetch_failed` | yes | — | Retry the validated source later or choose another public source |
 | `upstream_unavailable` | yes | — | Retry later; no HTTP response was received |
 | `upstream_unauthorized` | no | `401` | Reconnect; delegated authorization was rejected |
 | `upstream_forbidden` | no | `403` | Stop or change the request; Meo denied access |

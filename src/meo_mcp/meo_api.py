@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import re
+import socket
 from datetime import date
 from typing import Any
+from urllib.parse import urljoin, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from mcp.server.auth.middleware.auth_context import get_access_token
@@ -22,6 +26,16 @@ MEDICAL_RECORD_TYPES = {
     "surgery",
     "dental",
     "other",
+}
+HABIT_VALUE_TYPES = {"yes_no", "integer_scale"}
+HABIT_SUMMARY_MODES = {"average_scored_pets", "average_all_pets", "sum"}
+PHOTO_MAX_BYTES = 10 * 1024 * 1024
+PHOTO_REDIRECT_LIMIT = 3
+PHOTO_MIME_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
 }
 
 
@@ -527,6 +541,589 @@ class MeoApi:
         verified = await self._verify(self.get_medical_record, pet_id, record_id)
         return {"medical_record": verified["medical_record"], "verified": True}
 
+    async def list_habits(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("habits:read")
+        payload = await self._get(delegated, "/api/habits")
+        return {"habits": [self._habit(item) for item in self._items(payload)]}
+
+    async def get_habit(self, habit_id: int) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        delegated = await self._delegated_token("habits:read")
+        payload = await self._get(delegated, f"/api/habits/{habit_id}")
+        return {"habit": self._habit(self._object(payload))}
+
+    async def get_habit_heatmap(
+        self, habit_id: int, weeks: int = 52, end_date: date | None = None
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        if isinstance(weeks, bool) or not isinstance(weeks, int) or not 1 <= weeks <= 104:
+            self._error("validation_error", "weeks must be between 1 and 104.", False)
+        delegated = await self._delegated_token("habits:read")
+        params: dict[str, Any] = {"weeks": weeks}
+        if end_date is not None:
+            params["end_date"] = end_date.isoformat()
+        payload = await self._get(delegated, f"/api/habits/{habit_id}/heatmap", params)
+        return {"days": [self._habit_day_summary(item) for item in self._items(payload)]}
+
+    async def get_habit_day_entries(self, habit_id: int, entry_date: date) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        delegated = await self._delegated_token("habits:read")
+        payload = self._object(
+            await self._get(
+                delegated,
+                f"/api/habits/{habit_id}/entries/{entry_date.isoformat()}",
+            )
+        )
+        return self._habit_day(payload)
+
+    async def create_habit(
+        self,
+        name: str,
+        value_type: str,
+        pet_ids: list[int],
+        idempotency_key: str,
+        timezone: str | None = None,
+        scale_min: int | None = None,
+        scale_max: int | None = None,
+        day_summary_mode: str = "average_scored_pets",
+        share_with_coowners: bool = False,
+        reminder_enabled: bool = False,
+        reminder_time: str | None = None,
+        reminder_weekdays: list[int] | None = None,
+    ) -> dict[str, Any]:
+        key = self._idempotency_key(idempotency_key)
+        upstream = self._habit_configuration(
+            name=name,
+            value_type=value_type,
+            pet_ids=pet_ids,
+            timezone=timezone,
+            scale_min=scale_min,
+            scale_max=scale_max,
+            day_summary_mode=day_summary_mode,
+            share_with_coowners=share_with_coowners,
+            reminder_enabled=reminder_enabled,
+            reminder_time=reminder_time,
+            reminder_weekdays=reminder_weekdays,
+            creating=True,
+        )
+        delegated = await self._delegated_token("habits:read", "habits:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            "/api/habits",
+            json_data=upstream,
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        habit_id = self._response_id(created)
+        verified = await self._verify(self.get_habit, habit_id)
+        return {"habit": verified["habit"], "verified": True}
+
+    async def update_habit(
+        self,
+        habit_id: int,
+        base_version: str,
+        idempotency_key: str,
+        name: str | None = None,
+        timezone: str | None = None,
+        scale_min: int | None = None,
+        scale_max: int | None = None,
+        day_summary_mode: str | None = None,
+        share_with_coowners: bool | None = None,
+        reminder_enabled: bool | None = None,
+        reminder_time: str | None = None,
+        reminder_weekdays: list[int] | None = None,
+        pet_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        current = (await self.get_habit(habit_id))["habit"]
+        self._require_version_available(current)
+        upstream = self._habit_configuration(
+            name=name,
+            pet_ids=pet_ids,
+            timezone=timezone,
+            scale_min=scale_min,
+            scale_max=scale_max,
+            day_summary_mode=day_summary_mode,
+            share_with_coowners=share_with_coowners,
+            reminder_enabled=reminder_enabled,
+            reminder_time=reminder_time,
+            reminder_weekdays=reminder_weekdays,
+            creating=False,
+        )
+        self._require_changes(upstream)
+        upstream["base_version"] = base_version
+        delegated = await self._delegated_token("habits:read", "habits:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/habits/{habit_id}",
+            json_data=upstream,
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_habit, habit_id)
+        return {"habit": verified["habit"], "verified": True}
+
+    async def save_habit_day_entries(
+        self,
+        habit_id: int,
+        entry_date: date,
+        entries: list[dict[str, int | None]],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        key = self._idempotency_key(idempotency_key)
+        normalized_entries = self._habit_entries(entries)
+        await self.get_habit_day_entries(habit_id, entry_date)
+        delegated = await self._delegated_token("habits:read", "habits:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/habits/{habit_id}/entries/{entry_date.isoformat()}",
+            json_data={"entries": normalized_entries},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_habit_day_entries, habit_id, entry_date)
+        return {**verified, "verified": True}
+
+    async def archive_habit(
+        self, habit_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._habit_lifecycle(habit_id, base_version, idempotency_key, "archive")
+
+    async def restore_habit(
+        self, habit_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._habit_lifecycle(habit_id, base_version, idempotency_key, "restore")
+
+    async def delete_habit(
+        self, habit_id: int, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        try:
+            current = (await self.get_habit(habit_id))["habit"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            self._require_version_available(current)
+        delegated = await self._delegated_token("habits:read", "habits:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/habits/{habit_id}",
+            json_data={"base_version": base_version},
+            idempotency_key=key,
+        )
+        await self._verify_absent(self.get_habit, habit_id)
+        return {"habit_id": habit_id, "deleted": True, "verified": True}
+
+    async def list_pet_photos(self, pet_id: int) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        delegated = await self._delegated_token("pets:read")
+        pet = self._object(await self._get(delegated, f"/api/pets/{pet_id}"))
+        return {
+            "pet_id": pet_id,
+            "pet_version": pet.get("updated_at"),
+            "photos": self._pet_photos(pet),
+        }
+
+    async def upload_pet_photo_from_url(
+        self,
+        pet_id: int,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        current = await self.list_pet_photos(pet_id)
+        if not isinstance(current.get("pet_version"), str):
+            self._error("upstream_malformed", "Meo did not return a pet version.", True)
+        filename, content, content_type = await self._fetch_public_image(source_url)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            f"/api/pets/{pet_id}/photos",
+            form_data={"base_version": base_version},
+            files={"photo": (filename, content, content_type)},
+            idempotency_key=key,
+        )
+        created_pet = self._object(created)
+        created_photos = self._pet_photos(created_pet)
+        primary = next((photo for photo in created_photos if photo["is_primary"]), None)
+        if primary is None:
+            self._error(
+                "post_write_verification_failed",
+                "Meo accepted the photo but did not return its stable ID.",
+                True,
+            )
+        verified = await self._verify(self.list_pet_photos, pet_id)
+        if primary["id"] not in {photo["id"] for photo in verified["photos"]}:
+            self._error(
+                "post_write_verification_failed",
+                "Meo accepted the photo but it could not be verified.",
+                True,
+            )
+        return {"photo": primary, **verified, "verified": True}
+
+    async def set_primary_pet_photo(
+        self,
+        pet_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(photo_id, "photo_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        current = await self.list_pet_photos(pet_id)
+        if photo_id not in {photo["id"] for photo in current["photos"]}:
+            self._error("validation_error", "photo_id is not attached to this pet.", False)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/pets/{pet_id}/photos/{photo_id}/set-primary",
+            json_data={"base_version": base_version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.list_pet_photos, pet_id)
+        photo = next((item for item in verified["photos"] if item["id"] == photo_id), None)
+        if photo is None or not photo["is_primary"]:
+            self._error(
+                "post_write_verification_failed",
+                "Meo accepted the change but the primary photo could not be verified.",
+                True,
+            )
+        return {"photo": photo, **verified, "verified": True}
+
+    async def delete_pet_photo(
+        self,
+        pet_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(photo_id, "photo_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        await self.list_pet_photos(pet_id)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/photos/{photo_id}",
+            json_data={"base_version": base_version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.list_pet_photos, pet_id)
+        if photo_id in {photo["id"] for photo in verified["photos"]}:
+            self._error(
+                "post_write_verification_failed",
+                "Meo accepted the deletion but the photo is still present.",
+                True,
+            )
+        return {"photo_id": photo_id, **verified, "deleted": True, "verified": True}
+
+    async def list_microchips(self, pet_id: int, page: int = 1) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(page, "page")
+        delegated = await self._delegated_token("microchips:read")
+        payload = await self._get(delegated, f"/api/pets/{pet_id}/microchips", {"page": page})
+        return {
+            "microchips": [self._microchip(item) for item in self._items(payload)],
+            "pagination": self._pagination(payload),
+        }
+
+    async def get_microchip(self, pet_id: int, microchip_id: int) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(microchip_id, "microchip_id")
+        delegated = await self._delegated_token("microchips:read")
+        item = self._object(
+            await self._get(delegated, f"/api/pets/{pet_id}/microchips/{microchip_id}")
+        )
+        return {"microchip": self._microchip(item)}
+
+    async def add_microchip(
+        self,
+        pet_id: int,
+        chip_number: str,
+        idempotency_key: str,
+        issuer: str | None = None,
+        implanted_at: date | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        key = self._idempotency_key(idempotency_key)
+        upstream: dict[str, Any] = {"chip_number": self._chip_number(chip_number)}
+        issuer = self._optional_text(issuer, "issuer", 255)
+        if issuer is not None:
+            upstream["issuer"] = issuer
+        if implanted_at is not None:
+            upstream["implanted_at"] = implanted_at.isoformat()
+        delegated = await self._delegated_token("microchips:read", "microchips:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            f"/api/pets/{pet_id}/microchips",
+            json_data=upstream,
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        microchip_id = self._response_id(created)
+        verified = await self._verify(self.get_microchip, pet_id, microchip_id)
+        return {"microchip": verified["microchip"], "verified": True}
+
+    async def update_microchip(
+        self,
+        pet_id: int,
+        microchip_id: int,
+        base_version: str,
+        idempotency_key: str,
+        chip_number: str | None = None,
+        issuer: str | None = None,
+        implanted_at: date | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(microchip_id, "microchip_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        current = (await self.get_microchip(pet_id, microchip_id))["microchip"]
+        self._require_version_available(current)
+        upstream: dict[str, Any] = {}
+        if chip_number is not None:
+            upstream["chip_number"] = self._chip_number(chip_number)
+        if issuer is not None:
+            upstream["issuer"] = self._required_text(issuer, "issuer", 255)
+        if implanted_at is not None:
+            upstream["implanted_at"] = implanted_at.isoformat()
+        self._require_changes(upstream)
+        upstream["base_version"] = base_version
+        delegated = await self._delegated_token("microchips:read", "microchips:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/pets/{pet_id}/microchips/{microchip_id}",
+            json_data=upstream,
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_microchip, pet_id, microchip_id)
+        return {"microchip": verified["microchip"], "verified": True}
+
+    async def delete_microchip(
+        self,
+        pet_id: int,
+        microchip_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(microchip_id, "microchip_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        try:
+            current = (await self.get_microchip(pet_id, microchip_id))["microchip"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            self._require_version_available(current)
+        delegated = await self._delegated_token("microchips:read", "microchips:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/microchips/{microchip_id}",
+            params={"linked_transaction": "keep"},
+            json_data={"base_version": base_version},
+            idempotency_key=key,
+        )
+        await self._verify_absent(self.get_microchip, pet_id, microchip_id)
+        return {"microchip_id": microchip_id, "deleted": True, "verified": True}
+
+    async def _habit_lifecycle(
+        self,
+        habit_id: int,
+        base_version: str,
+        idempotency_key: str,
+        action: str,
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        key = self._idempotency_key(idempotency_key)
+        base_version = self._version(base_version)
+        current = (await self.get_habit(habit_id))["habit"]
+        self._require_version_available(current)
+        delegated = await self._delegated_token("habits:read", "habits:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/habits/{habit_id}/{action}",
+            json_data={"base_version": base_version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_habit, habit_id)
+        archived = verified["habit"].get("archived_at") is not None
+        if archived != (action == "archive"):
+            self._error(
+                "post_write_verification_failed",
+                "Meo accepted the lifecycle change but it could not be verified.",
+                True,
+            )
+        return {"habit": verified["habit"], "verified": True}
+
+    async def _fetch_public_image(self, source_url: str) -> tuple[str, bytes, str]:
+        current_url = self._required_text(source_url, "source_url", 2048)
+        try:
+            async with httpx.AsyncClient(
+                timeout=12, follow_redirects=False, trust_env=False
+            ) as client:
+                for redirect_count in range(PHOTO_REDIRECT_LIMIT + 1):
+                    pinned_url, hostname = await self._pinned_public_url(current_url)
+                    async with client.stream(
+                        "GET",
+                        pinned_url,
+                        headers={"Host": hostname, "Accept": "image/*"},
+                        extensions={"sni_hostname": hostname},
+                    ) as response:
+                        if response.status_code in {301, 302, 303, 307, 308}:
+                            location = response.headers.get("location")
+                            if redirect_count >= PHOTO_REDIRECT_LIMIT or not location:
+                                self._error(
+                                    "source_url_rejected",
+                                    "The photo source redirect chain is not allowed.",
+                                    False,
+                                )
+                            current_url = urljoin(current_url, location)
+                            continue
+                        if response.status_code != 200:
+                            self._error(
+                                "source_fetch_failed",
+                                "The validated photo source could not be fetched.",
+                                True,
+                            )
+                        content_type = (
+                            response.headers.get("content-type", "")
+                            .split(";", 1)[0]
+                            .strip()
+                            .lower()
+                        )
+                        extension = PHOTO_MIME_EXTENSIONS.get(content_type)
+                        if extension is None:
+                            self._error(
+                                "source_image_invalid",
+                                "The photo source did not return a supported image type.",
+                                False,
+                            )
+                        declared = response.headers.get("content-length")
+                        if declared is not None:
+                            try:
+                                declared_size = int(declared)
+                            except ValueError:
+                                self._error(
+                                    "source_image_invalid",
+                                    "The photo source declared an invalid size.",
+                                    False,
+                                )
+                            if declared_size > PHOTO_MAX_BYTES:
+                                self._error(
+                                    "source_image_too_large",
+                                    "The photo source exceeds the 10 MiB limit.",
+                                    False,
+                                )
+                        chunks: list[bytes] = []
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > PHOTO_MAX_BYTES:
+                                self._error(
+                                    "source_image_too_large",
+                                    "The photo source exceeds the 10 MiB limit.",
+                                    False,
+                                )
+                            chunks.append(chunk)
+                        if size == 0:
+                            self._error(
+                                "source_image_invalid",
+                                "The photo source returned an empty body.",
+                                False,
+                            )
+                        return f"photo{extension}", b"".join(chunks), content_type
+        except MeoApiError:
+            raise
+        except (httpx.HTTPError, OSError, UnicodeError, ValueError) as exc:
+            raise self._tool_error(
+                "source_fetch_failed",
+                "The validated photo source could not be fetched.",
+                True,
+            ) from exc
+        self._error("source_fetch_failed", "The photo source could not be fetched.", True)
+
+    async def _pinned_public_url(self, source_url: str) -> tuple[str, str]:
+        try:
+            parsed = urlsplit(source_url)
+            port = parsed.port
+        except ValueError:
+            self._error("source_url_rejected", "The photo source URL is invalid.", False)
+        if (
+            parsed.scheme.lower() != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+            or port not in {None, 443}
+        ):
+            self._error(
+                "source_url_rejected",
+                "The photo source must be a public HTTPS URL on port 443.",
+                False,
+            )
+        try:
+            hostname = parsed.hostname.encode("idna").decode("ascii")
+            addresses = await self._public_addresses(hostname)
+        except (OSError, UnicodeError, ValueError) as exc:
+            raise self._tool_error(
+                "source_url_rejected",
+                "The photo source host is not a public internet destination.",
+                False,
+            ) from exc
+        if not addresses or any(not address.is_global for address in addresses):
+            self._error(
+                "source_url_rejected",
+                "The photo source host is not a public internet destination.",
+                False,
+            )
+        address = sorted(addresses, key=lambda item: (item.version != 4, str(item)))[0]
+        netloc = f"[{address}]" if address.version == 6 else str(address)
+        return urlunsplit(("https", netloc, parsed.path or "/", parsed.query, "")), hostname
+
+    @staticmethod
+    async def _public_addresses(
+        hostname: str,
+    ) -> set[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+        try:
+            literal = ipaddress.ip_address(hostname)
+            addresses = {literal}
+        except ValueError:
+            loop = asyncio.get_running_loop()
+            resolved = await loop.getaddrinfo(
+                hostname,
+                443,
+                family=socket.AF_UNSPEC,
+                type=socket.SOCK_STREAM,
+            )
+            addresses = {ipaddress.ip_address(item[4][0]) for item in resolved}
+        if not addresses or any(not address.is_global for address in addresses):
+            return set()
+        return addresses
+
     async def _health_list(
         self,
         pet_id: int,
@@ -591,6 +1188,8 @@ class MeoApi:
         *,
         params: dict[str, Any] | None = None,
         json_data: dict[str, Any] | None = None,
+        form_data: dict[str, Any] | None = None,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
         idempotency_key: str | None = None,
         expected_statuses: set[int] | None = None,
     ) -> Any:
@@ -605,6 +1204,8 @@ class MeoApi:
                     headers=headers,
                     params=params,
                     json=json_data,
+                    data=form_data,
+                    files=files,
                 )
         except httpx.HTTPError as exc:
             raise self._tool_error(
@@ -689,6 +1290,8 @@ class MeoApi:
                 False,
                 response.status_code,
             )
+        if response.status_code == 204:
+            return None
         try:
             return response.json()
         except ValueError:
@@ -846,6 +1449,111 @@ class MeoApi:
         return normalized
 
     @staticmethod
+    def _habit(item: dict[str, Any]) -> dict[str, Any]:
+        pets = item.get("pets") if isinstance(item.get("pets"), list) else []
+        capabilities = (
+            item.get("capabilities") if isinstance(item.get("capabilities"), dict) else {}
+        )
+        return {
+            "id": item.get("id"),
+            "name": item.get("name"),
+            "timezone": item.get("timezone"),
+            "value_type": item.get("value_type"),
+            "scale_min": item.get("scale_min"),
+            "scale_max": item.get("scale_max"),
+            "day_summary_mode": item.get("day_summary_mode"),
+            "share_with_coowners": bool(item.get("share_with_coowners")),
+            "reminder_enabled": bool(item.get("reminder_enabled")),
+            "reminder_time": item.get("reminder_time"),
+            "reminder_weekdays": item.get("reminder_weekdays"),
+            "archived_at": item.get("archived_at"),
+            "pet_count": item.get("pet_count"),
+            "pets": [
+                {key: pet.get(key) for key in ("id", "name", "photo_url")}
+                for pet in pets
+                if isinstance(pet, dict)
+            ],
+            "capabilities": {
+                key: bool(capabilities.get(key))
+                for key in ("can_edit", "can_delete", "can_archive", "can_share")
+            },
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _habit_day_summary(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: item.get(key)
+            for key in (
+                "date",
+                "average_value",
+                "display_value",
+                "entry_count",
+                "visible_pet_count",
+                "normalized_intensity",
+            )
+        }
+
+    @classmethod
+    def _habit_day(cls, item: dict[str, Any]) -> dict[str, Any]:
+        entries = item.get("entries") if isinstance(item.get("entries"), list) else []
+        habit = item.get("habit")
+        if not isinstance(habit, dict):
+            cls._error("upstream_malformed", "Meo returned malformed habit day data.", True)
+        return {
+            "habit": cls._habit(habit),
+            "date": item.get("date"),
+            "entries": [
+                {
+                    key: entry.get(key)
+                    for key in (
+                        "entry_id",
+                        "pet_id",
+                        "pet_name",
+                        "pet_photo_url",
+                        "value_int",
+                        "is_current_pet",
+                        "has_entry",
+                    )
+                }
+                for entry in entries
+                if isinstance(entry, dict)
+            ],
+        }
+
+    @staticmethod
+    def _pet_photos(pet: dict[str, Any]) -> list[dict[str, Any]]:
+        photos = pet.get("photos") if isinstance(pet.get("photos"), list) else []
+        return [
+            {
+                key: photo.get(key)
+                for key in (
+                    "id",
+                    "url",
+                    "thumb_url",
+                    "medium_url",
+                    "width",
+                    "height",
+                    "is_primary",
+                    "processing",
+                )
+            }
+            for photo in photos
+            if isinstance(photo, dict)
+        ]
+
+    @staticmethod
+    def _microchip(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": item.get("id"),
+            "chip_number": item.get("chip_number"),
+            "issuer": item.get("issuer"),
+            "implanted_at": item.get("implanted_at"),
+            "version": item.get("updated_at", item.get("version")),
+            "has_linked_transaction": bool(item.get("health_finance_link_exists")),
+        }
+
+    @staticmethod
     def _next_birthday(pet: dict[str, Any]) -> date | None:
         if pet.get("birthday_precision") != "day":
             return None
@@ -891,6 +1599,23 @@ class MeoApi:
                 "Meo accepted the write but the target could not be verified. Re-read it later.",
                 True,
             ) from exc
+
+    async def _verify_absent(self, operation, *args) -> None:
+        try:
+            await operation(*args)
+        except MeoApiError as exc:
+            if exc.payload.get("code") == "upstream_not_found":
+                return
+            raise self._tool_error(
+                "post_write_verification_failed",
+                "Meo accepted the deletion but absence could not be verified. Re-read it later.",
+                True,
+            ) from exc
+        self._error(
+            "post_write_verification_failed",
+            "Meo accepted the deletion but the target is still present.",
+            True,
+        )
 
     @classmethod
     def _response_id(cls, payload: Any) -> int:
@@ -988,6 +1713,124 @@ class MeoApi:
         value = cls._required_text(value, "record_type", 100).lower()
         if value not in MEDICAL_RECORD_TYPES:
             cls._error("validation_error", "record_type is not supported.", False)
+        return value
+
+    @classmethod
+    def _habit_configuration(
+        cls,
+        *,
+        name: str | None = None,
+        value_type: str | None = None,
+        pet_ids: list[int] | None = None,
+        timezone: str | None = None,
+        scale_min: int | None = None,
+        scale_max: int | None = None,
+        day_summary_mode: str | None = None,
+        share_with_coowners: bool | None = None,
+        reminder_enabled: bool | None = None,
+        reminder_time: str | None = None,
+        reminder_weekdays: list[int] | None = None,
+        creating: bool,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        if name is not None:
+            result["name"] = cls._required_text(name, "name", 120)
+        if value_type is not None:
+            value_type = cls._required_text(value_type, "value_type").lower()
+            if value_type not in HABIT_VALUE_TYPES:
+                cls._error("validation_error", "value_type is not supported.", False)
+            result["value_type"] = value_type
+        if pet_ids is not None:
+            if not pet_ids:
+                cls._error("validation_error", "pet_ids must contain at least one pet.", False)
+            if any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+                for value in pet_ids
+            ):
+                cls._error("validation_error", "pet_ids must be positive integers.", False)
+            if len(set(pet_ids)) != len(pet_ids):
+                cls._error("validation_error", "pet_ids must be unique.", False)
+            result["pet_ids"] = pet_ids
+        if timezone is not None:
+            timezone = cls._required_text(timezone, "timezone", 255)
+            try:
+                ZoneInfo(timezone)
+            except ZoneInfoNotFoundError:
+                cls._error("validation_error", "timezone must be a valid IANA timezone.", False)
+            result["timezone"] = timezone
+        if scale_min is not None:
+            if isinstance(scale_min, bool) or not isinstance(scale_min, int):
+                cls._error("validation_error", "scale_min must be an integer.", False)
+            result["scale_min"] = scale_min
+        if scale_max is not None:
+            if isinstance(scale_max, bool) or not isinstance(scale_max, int):
+                cls._error("validation_error", "scale_max must be an integer.", False)
+            result["scale_max"] = scale_max
+        if scale_min is not None and scale_max is not None and scale_max < scale_min:
+            cls._error("validation_error", "scale_max must be at least scale_min.", False)
+        if creating and value_type == "integer_scale" and (scale_min is None or scale_max is None):
+            cls._error("validation_error", "integer_scale requires both scale bounds.", False)
+        if creating and value_type == "yes_no" and (scale_min is not None or scale_max is not None):
+            cls._error("validation_error", "yes_no habits cannot define scale bounds.", False)
+        if day_summary_mode is not None:
+            if day_summary_mode not in HABIT_SUMMARY_MODES:
+                cls._error("validation_error", "day_summary_mode is not supported.", False)
+            result["day_summary_mode"] = day_summary_mode
+        if share_with_coowners is not None:
+            result["share_with_coowners"] = share_with_coowners
+        if reminder_enabled is not None:
+            result["reminder_enabled"] = reminder_enabled
+        if reminder_time is not None:
+            reminder_time = cls._required_text(reminder_time, "reminder_time")
+            if re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", reminder_time) is None:
+                cls._error("validation_error", "reminder_time must use HH:MM.", False)
+            result["reminder_time"] = reminder_time
+        if creating and reminder_enabled and reminder_time is None:
+            cls._error("validation_error", "Enabled reminders require reminder_time.", False)
+        if reminder_weekdays is not None:
+            if any(
+                isinstance(day, bool) or not isinstance(day, int) or day not in range(7)
+                for day in reminder_weekdays
+            ):
+                cls._error(
+                    "validation_error",
+                    "reminder_weekdays must contain values from 0 through 6.",
+                    False,
+                )
+            if len(set(reminder_weekdays)) != len(reminder_weekdays):
+                cls._error("validation_error", "reminder_weekdays must be unique.", False)
+            result["reminder_weekdays"] = reminder_weekdays
+        if creating and (
+            "name" not in result or "value_type" not in result or "pet_ids" not in result
+        ):
+            cls._error("validation_error", "name, value_type, and pet_ids are required.", False)
+        return result
+
+    @classmethod
+    def _habit_entries(cls, entries: list[dict[str, int | None]]) -> list[dict[str, int | None]]:
+        if not isinstance(entries, list) or not entries:
+            cls._error("validation_error", "entries must contain at least one row.", False)
+        result: list[dict[str, int | None]] = []
+        seen: set[int] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                cls._error("validation_error", "Each entry must be an object.", False)
+            pet_id, value = entry.get("pet_id"), entry.get("value_int")
+            if isinstance(pet_id, bool) or not isinstance(pet_id, int) or pet_id < 1:
+                cls._error("validation_error", "Each entry requires a positive pet_id.", False)
+            if pet_id in seen:
+                cls._error("validation_error", "Entry pet_ids must be unique.", False)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+                cls._error("validation_error", "value_int must be an integer or null.", False)
+            seen.add(pet_id)
+            result.append({"pet_id": pet_id, "value_int": value})
+        return result
+
+    @classmethod
+    def _chip_number(cls, value: str) -> str:
+        value = cls._required_text(value, "chip_number", 20)
+        if len(value) < 10:
+            cls._error("validation_error", "chip_number must be 10-20 characters.", False)
         return value
 
     @classmethod

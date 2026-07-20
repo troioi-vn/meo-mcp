@@ -55,6 +55,14 @@ Requests pass through gateway guards before MCP or OAuth handlers:
 - **Transport lifecycle:** the FastMCP session manager is started and stopped
   with the parent Starlette lifespan.
 
+Remote pet-photo ingestion has a second outbound boundary. It accepts only
+HTTPS on port 443, rejects credentials and fragments, resolves every DNS answer
+and rejects the whole host if any address is non-public, connects to one pinned
+address while preserving TLS SNI/HTTP Host, and repeats validation for each of
+at most three redirects. Only supported image MIME types are streamed, with a
+10 MiB declared and actual size ceiling. Source response bodies and URLs are
+not copied into errors or logs.
+
 Reverse proxies must preserve the public host and HTTPS scheme consistently
 with `PUBLIC_BASE_URL`. TLS termination, rate limits, firewall policy, backup,
 and runtime monitoring are deployment controls rather than application

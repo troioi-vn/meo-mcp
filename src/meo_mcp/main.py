@@ -14,6 +14,7 @@ from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, Re
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolResult, TextContent
+from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -27,6 +28,11 @@ from .oauth import ALLOWED_SCOPES, DatabaseOAuthProvider
 from .security import redact_log_event
 
 logger = structlog.get_logger()
+
+
+class HabitEntryInput(BaseModel):
+    pet_id: int = Field(ge=1)
+    value_int: int | None = None
 
 
 class GuardMiddleware(BaseHTTPMiddleware):
@@ -108,7 +114,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
     server = FastMCP(
         "Meo Mai Moi",
         instructions=(
-            "Read and safely update Meo Mai Moi pet profiles and core health history. "
+            "Read and safely update Meo Mai Moi pets, health history, habits, photos, "
+            "and microchips. "
             "Resolve names to stable IDs, read targets before updates, preserve the returned "
             "version, and reuse an idempotency key only for an exact write retry."
         ),
@@ -423,6 +430,242 @@ def create_app(settings: Settings | None = None) -> Starlette:
             record_date,
             description,
             vet_name,
+        )
+
+    @server.tool(annotations=read_annotations)
+    async def list_habits() -> CallToolResult:
+        """List visible habit trackers with narrowed configuration."""
+        return await call(api.list_habits)
+
+    @server.tool(annotations=read_annotations)
+    async def get_habit(habit_id: int) -> CallToolResult:
+        """Get one explicit habit and its concurrency version."""
+        return await call(api.get_habit, habit_id)
+
+    @server.tool(annotations=read_annotations)
+    async def get_habit_heatmap(
+        habit_id: int, weeks: int = 52, end_date: date | None = None
+    ) -> CallToolResult:
+        """Read bounded daily summary values for one habit."""
+        return await call(api.get_habit_heatmap, habit_id, weeks, end_date)
+
+    @server.tool(annotations=read_annotations)
+    async def get_habit_day_entries(habit_id: int, entry_date: date) -> CallToolResult:
+        """Read editable per-pet entries for an explicit habit date."""
+        return await call(api.get_habit_day_entries, habit_id, entry_date)
+
+    @server.tool(annotations=create_annotations)
+    async def create_habit(
+        name: str,
+        value_type: Literal["yes_no", "integer_scale"],
+        pet_ids: list[int],
+        idempotency_key: str,
+        timezone: str | None = None,
+        scale_min: int | None = None,
+        scale_max: int | None = None,
+        day_summary_mode: Literal[
+            "average_scored_pets", "average_all_pets", "sum"
+        ] = "average_scored_pets",
+        share_with_coowners: bool = False,
+        reminder_enabled: bool = False,
+        reminder_time: str | None = None,
+        reminder_weekdays: list[int] | None = None,
+    ) -> CallToolResult:
+        """Create and verify a habit for explicit owned pet IDs."""
+        return await call(
+            api.create_habit,
+            name,
+            value_type,
+            pet_ids,
+            idempotency_key,
+            timezone,
+            scale_min,
+            scale_max,
+            day_summary_mode,
+            share_with_coowners,
+            reminder_enabled,
+            reminder_time,
+            reminder_weekdays,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_habit(
+        habit_id: int,
+        base_version: str,
+        idempotency_key: str,
+        name: str | None = None,
+        timezone: str | None = None,
+        scale_min: int | None = None,
+        scale_max: int | None = None,
+        day_summary_mode: Literal["average_scored_pets", "average_all_pets", "sum"] | None = None,
+        share_with_coowners: bool | None = None,
+        reminder_enabled: bool | None = None,
+        reminder_time: str | None = None,
+        reminder_weekdays: list[int] | None = None,
+        pet_ids: list[int] | None = None,
+    ) -> CallToolResult:
+        """Update and verify an explicit habit using its read version."""
+        return await call(
+            api.update_habit,
+            habit_id,
+            base_version,
+            idempotency_key,
+            name,
+            timezone,
+            scale_min,
+            scale_max,
+            day_summary_mode,
+            share_with_coowners,
+            reminder_enabled,
+            reminder_time,
+            reminder_weekdays,
+            pet_ids,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def save_habit_day_entries(
+        habit_id: int,
+        entry_date: date,
+        entries: list[HabitEntryInput],
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Upsert explicit per-pet values for one habit date and verify them."""
+        return await call(
+            api.save_habit_day_entries,
+            habit_id,
+            entry_date,
+            [entry.model_dump() for entry in entries],
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def archive_habit(
+        habit_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Archive and verify an explicit habit using its read version."""
+        return await call(api.archive_habit, habit_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def restore_habit(
+        habit_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Restore and verify an explicit archived habit using its read version."""
+        return await call(api.restore_habit, habit_id, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def delete_habit(
+        habit_id: int, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Permanently delete an explicit habit and verify its absence."""
+        return await call(api.delete_habit, habit_id, base_version, idempotency_key)
+
+    @server.tool(annotations=read_annotations)
+    async def list_pet_photos(pet_id: int) -> CallToolResult:
+        """List one pet's photos and the pet concurrency version."""
+        return await call(api.list_pet_photos, pet_id)
+
+    @server.tool(annotations=create_annotations)
+    async def upload_pet_photo_from_url(
+        pet_id: int,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Attach a validated public HTTPS image and verify the photo."""
+        return await call(
+            api.upload_pet_photo_from_url,
+            pet_id,
+            base_version,
+            source_url,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def set_primary_pet_photo(
+        pet_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Set an explicit attached photo as primary and verify it."""
+        return await call(
+            api.set_primary_pet_photo, pet_id, photo_id, base_version, idempotency_key
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_pet_photo(
+        pet_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete an explicit attached photo and verify its absence."""
+        return await call(api.delete_pet_photo, pet_id, photo_id, base_version, idempotency_key)
+
+    @server.tool(annotations=read_annotations)
+    async def list_microchips(pet_id: int, page: int = 1) -> CallToolResult:
+        """List one pet's paginated microchip records."""
+        return await call(api.list_microchips, pet_id, page)
+
+    @server.tool(annotations=read_annotations)
+    async def get_microchip(pet_id: int, microchip_id: int) -> CallToolResult:
+        """Get one explicit microchip record and its concurrency version."""
+        return await call(api.get_microchip, pet_id, microchip_id)
+
+    @server.tool(annotations=create_annotations)
+    async def add_microchip(
+        pet_id: int,
+        chip_number: str,
+        idempotency_key: str,
+        issuer: str | None = None,
+        implanted_at: date | None = None,
+    ) -> CallToolResult:
+        """Add and verify a microchip without finance authority."""
+        return await call(
+            api.add_microchip,
+            pet_id,
+            chip_number,
+            idempotency_key,
+            issuer,
+            implanted_at,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_microchip(
+        pet_id: int,
+        microchip_id: int,
+        base_version: str,
+        idempotency_key: str,
+        chip_number: str | None = None,
+        issuer: str | None = None,
+        implanted_at: date | None = None,
+    ) -> CallToolResult:
+        """Update and verify an explicit microchip using its read version."""
+        return await call(
+            api.update_microchip,
+            pet_id,
+            microchip_id,
+            base_version,
+            idempotency_key,
+            chip_number,
+            issuer,
+            implanted_at,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_microchip(
+        pet_id: int,
+        microchip_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete a microchip, preserve linked finance data, and verify absence."""
+        return await call(
+            api.delete_microchip,
+            pet_id,
+            microchip_id,
+            base_version,
+            idempotency_key,
         )
 
     async def health(_: Request) -> Response:

@@ -33,7 +33,16 @@ def test_relative_documentation_links_resolve() -> None:
 def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     catalog = (ROOT / "docs" / "tools.md").read_text()
 
-    assert ALLOWED_SCOPES == ["pets:read", "health:read", "pets:write", "health:write"]
+    assert ALLOWED_SCOPES == [
+        "pets:read",
+        "health:read",
+        "habits:read",
+        "microchips:read",
+        "pets:write",
+        "health:write",
+        "habits:write",
+        "microchips:write",
+    ]
     assert "`list_pets`" in catalog
     assert "`pets:read`" in catalog
     assert "`read`" in catalog
@@ -42,6 +51,9 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     assert "`health:write`" in catalog
     assert "idempotency_key" in catalog
     assert "base_version" in catalog
+    assert "`create_habit`" in catalog
+    assert "`upload_pet_photo_from_url`" in catalog
+    assert "`delete_microchip`" in catalog
 
 
 def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:

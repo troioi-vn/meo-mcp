@@ -35,6 +35,25 @@ part of the end-user tool surface.
 | `update_vaccination` | Live | Correct one explicit vaccination at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites pet medical data |
 | `add_medical_record` | Live | Record one dated medical event for an explicit pet | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/medical-records`; `GET /api/pets/{pet_id}/medical-records/{record_id}` | Create | Moderate; creates sensitive medical data |
 | `update_medical_record` | Live | Correct one explicit medical record at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/medical-records/{record_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites sensitive medical data |
+| `list_habits` | Proposed (Phase 2A) | List habit trackers visible to the user | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits` | Read | Moderate; pet routines and reminder settings |
+| `get_habit` | Proposed (Phase 2A) | Retrieve one explicit habit and its editable version | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}` | Read | Moderate; pet routines and reminder settings |
+| `get_habit_heatmap` | Proposed (Phase 2A) | Summarize a bounded date range of habit completion/intensity | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/heatmap` | Read | Moderate; longitudinal care routine data |
+| `get_habit_day_entries` | Proposed (Phase 2A) | Read per-pet values for one explicit habit date | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/entries/{date}` | Read | Moderate; per-pet routine data |
+| `create_habit` | Proposed (Phase 2A) | Create a tracker for explicit owned pet IDs | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `create`) | `POST /api/habits`; verification `GET /api/habits/{habit_id}` | Create | Moderate; creates reminders and routine tracking |
+| `update_habit` | Proposed (Phase 2A) | Update one explicit habit at a known version | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `update`) | `GET /api/habits/{habit_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites tracker configuration |
+| `save_habit_day_entries` | Proposed (Phase 2A) | Upsert or clear explicit per-pet values on one habit date | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `update`) | `GET /api/habits/{habit_id}/entries/{date}`; `PUT` same path; verification `GET` | Upsert | Moderate; overwrites daily care tracking |
+| `archive_habit` | Proposed (Phase 2A) | Hide one explicit habit without deleting its history | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `update`) | `GET /api/habits/{habit_id}`; `POST /api/habits/{habit_id}/archive`; verification `GET` | Update | Moderate; disables an active tracker |
+| `restore_habit` | Proposed (Phase 2A) | Restore one explicit archived habit | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `update`) | `GET /api/habits/{habit_id}`; `POST /api/habits/{habit_id}/restore`; verification `GET` | Update | Moderate; re-enables a tracker |
+| `delete_habit` | Proposed (Phase 2A) | Permanently delete one explicit habit after a versioned read | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `delete`) | `GET /api/habits/{habit_id}`; `DELETE` same path; absence verification `GET` | Delete | High; permanently removes habit history |
+| `list_pet_photos` | Proposed (Phase 2A) | List stable photo IDs, renditions, primary status, and pet version | `pets:read` | `pets:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}` | Read | Moderate; personal images and metadata |
+| `upload_pet_photo_from_url` | Proposed (Phase 2A) | Import one bounded public HTTPS image and make it primary | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | guarded source `GET`; `GET /api/pets/{pet_id}`; multipart `POST /api/pets/{pet_id}/photos`; verification `GET` | Create | High; gateway fetch plus durable personal image upload |
+| `set_primary_pet_photo` | Proposed (Phase 2A) | Make one explicit existing photo the pet's primary image | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}`; `POST /api/pets/{pet_id}/photos/{photo_id}/set-primary`; verification `GET` | Update | Moderate; changes public/profile presentation |
+| `delete_pet_photo` | Proposed (Phase 2A) | Permanently delete one explicit pet photo at a known pet version | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `delete`) | `GET /api/pets/{pet_id}`; `DELETE /api/pets/{pet_id}/photos/{photo_id}`; verification `GET` | Delete | High; permanently removes a personal image |
+| `list_microchips` | Proposed (Phase 2A) | List a pet's microchip identity records | `microchips:read` | `microchips:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/microchips` | Read | High; stable animal identity data |
+| `get_microchip` | Proposed (Phase 2A) | Retrieve one explicit microchip record and version | `microchips:read` | `microchips:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/microchips/{microchip_id}` | Read | High; stable animal identity data |
+| `add_microchip` | Proposed (Phase 2A) | Add one microchip identity record without finance side effects | `microchips:read` + `microchips:write` | `microchips:read` + `microchips:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/microchips`; verification `GET` | Create | High; creates durable identity data |
+| `update_microchip` | Proposed (Phase 2A) | Correct one explicit microchip record at a known version | `microchips:read` + `microchips:write` | `microchips:read` + `microchips:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/microchips/{microchip_id}`; `PUT` same path; verification `GET` | Update | High; overwrites durable identity data |
+| `delete_microchip` | Proposed (Phase 2A) | Delete one explicit microchip record while preserving linked finance data | `microchips:read` + `microchips:write` | `microchips:read` + `microchips:write` (legacy PAT: `read` + `delete`) | `GET /api/pets/{pet_id}/microchips/{microchip_id}`; `DELETE` same path with linked transaction kept; absence verification `GET` | Delete | High; permanently removes identity data |
 
 ## Scope model
 
@@ -44,6 +63,10 @@ part of the end-user tool surface.
 | `health:read` | View weights, vaccinations, and medical records for pets the user may access | `health:read` | Health lists/details; overview |
 | `pets:write` | Create and edit pet profiles the user may manage | `pet:write` | Pet create/update; always paired with `pets:read` by these tools |
 | `health:write` | Add and edit weight, vaccination, and medical records for pets the user may manage | `health:write` | Health create/update; always paired with `health:read` by these tools |
+| `habits:read` | View habit trackers, day entries, and heatmaps visible to the user | `habits:read` | Habit list/detail/day/heatmap |
+| `habits:write` | Create, edit, archive, restore, delete, and record entries for habits the user may manage | `habits:write` | Habit mutations; always paired with `habits:read` by these tools |
+| `microchips:read` | View microchip identity records for pets the user may access | `microchips:read` | Microchip list/detail |
+| `microchips:write` | Add, correct, and delete microchip records for pets the user may manage | `microchips:write` | Microchip mutations; always paired with `microchips:read` by these tools |
 
 Scopes are independently requestable non-empty subsets. The default dynamic
 registration scope set includes both so general clients can discover the whole
@@ -70,6 +93,13 @@ Phase 1B create tools declare `readOnlyHint: false`,
 Update tools differ only in `destructiveHint: true`, because they overwrite
 existing fields. Their idempotency hint depends on the required stable
 `idempotency_key`, not on a claim in the description.
+
+Phase 2A creates use the same create annotations. Configuration changes,
+day-entry upserts, archive/restore, primary-photo selection, and all deletes use
+the update annotations. Deletes remain `idempotentHint: true` because the
+stable key replays the first terminal response; they are also
+`destructiveHint: true`. Photo source fetching is open-world and does not make
+the other write scopes interchangeable.
 
 ## Shared schemas
 
@@ -261,6 +291,83 @@ the stable ID returned from Meo.
 - Health create/update outputs use the corresponding narrowed shared record
   under `weight`, `vaccination`, or `medical_record`, plus `verified: true`.
 
+## Phase 2A ordinary pet-care tools
+
+All Phase 2A writes use the same idempotency-key contract as Phase 1B. An
+update, archive, restore, or delete also requires the exact `base_version` from
+its read tool. Meo performs the authoritative version check before mutation.
+The gateway then reads the target back, or verifies absence after a delete.
+
+### Habits
+
+- `Habit` contains `id`, `name`, IANA `timezone`, `value_type` (`yes_no |
+  integer_scale`), nullable `scale_min`/`scale_max`, `day_summary_mode`
+  (`average_scored_pets | average_all_pets | sum`), sharing/reminder settings,
+  nullable `archived_at`, a narrowed pet list (`id`, `name`, `photo_url`),
+  capability booleans, and nullable `version`. Creator IDs are omitted.
+- `list_habits` input is `{}` and returns `{ "habits": Habit[] }`.
+  `get_habit` takes positive `habit_id` and returns `{ "habit": Habit }`.
+- `get_habit_heatmap` takes `habit_id`, `weeks` from 1 through 104 (default
+  52), and optional ISO `end_date`. It returns daily rows containing only
+  `date`, nullable `average_value`, nullable `display_value`, `entry_count`,
+  `visible_pet_count`, and nullable `normalized_intensity`.
+- `get_habit_day_entries` takes `habit_id` and a non-future ISO `entry_date`.
+  It returns the narrowed habit plus rows containing `entry_id`, `pet_id`,
+  `pet_name`, `pet_photo_url`, nullable `value_int`, `is_current_pet`, and
+  `has_entry`.
+- `create_habit` requires `name`, `value_type`, one or more explicit unique
+  `pet_ids`, and `idempotency_key`. It accepts the optional configuration fields
+  represented by `Habit`; integer scales require both bounds, and enabled
+  reminders require a time. Output is the verified `habit`.
+- `update_habit` requires `habit_id`, `base_version`, `idempotency_key`, and at
+  least one mutable configuration field. Meo keeps value-type and pet ownership
+  rules authoritative. Output is the verified `habit`.
+- `save_habit_day_entries` requires `habit_id`, `entry_date`,
+  `idempotency_key`, and one or more unique `{ "pet_id", "value_int" }` rows.
+  A null value explicitly clears that pet/date entry. It reads the day first
+  and verifies the returned day after the upsert.
+- `archive_habit`, `restore_habit`, and `delete_habit` each require explicit
+  `habit_id`, `base_version`, and `idempotency_key`. Archive/restore return the
+  verified habit. Delete returns `{ "habit_id", "deleted": true,
+  "verified": true }` only after a detail read returns not-found.
+
+### Pet photos
+
+- `list_pet_photos` takes positive `pet_id` and returns `pet_version` plus
+  photos narrowed to `id`, `url`, nullable `thumb_url`/`medium_url`, nullable
+  `width`/`height`, `is_primary`, and `processing`.
+- `upload_pet_photo_from_url` requires `pet_id`, its `base_version`, a public
+  HTTPS `source_url`, and `idempotency_key`. The gateway rejects credentials,
+  fragments, non-443 ports, private/reserved/loopback DNS answers, unsafe
+  redirects, unsupported image MIME types, and bodies over 10 MiB. Each hop is
+  connected through a validated pinned address while preserving TLS SNI and
+  the HTTP host. Meo receives a multipart file; arbitrary source response text
+  is never returned or logged.
+- `set_primary_pet_photo` and `delete_pet_photo` require positive `pet_id` and
+  `photo_id`, the pet's `base_version`, and `idempotency_key`. Both read the
+  current photo list first; setting primary verifies the selected ID is primary,
+  while deletion verifies that ID is absent. The special upstream `current`
+  deletion alias is never exposed.
+
+### Microchips
+
+- `Microchip` contains `id`, `chip_number`, nullable `issuer`, nullable ISO
+  `implanted_at`, nullable `version`, and `has_linked_transaction`; it omits
+  pet/user and finance identifiers.
+- `list_microchips` takes `pet_id` and `page`; `get_microchip` additionally
+  takes explicit `microchip_id`. Outputs use the shared pagination shape.
+- `add_microchip` requires `pet_id`, a 10–20 character `chip_number`, and
+  `idempotency_key`; optional fields are `issuer` and `implanted_at`. It does
+  not accept finance-expense input under the microchip scope.
+- `update_microchip` requires `pet_id`, `microchip_id`, `base_version`,
+  `idempotency_key`, and at least one mutable field.
+- `delete_microchip` requires the explicit IDs, version, and key. If a finance
+  transaction is linked, Meo removes only the link and preserves the finance
+  record. The tool never receives authority to delete finance data.
+- Microchip creates/updates return the verified record. Delete returns
+  `{ "microchip_id", "deleted": true, "verified": true }` after absence is
+  confirmed.
+
 ## Errors
 
 Every tool can return `scope_required`, `authorization_inactive`, or the common
@@ -275,6 +382,10 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 | `idempotency_in_progress` | yes | The same idempotent write is still being processed; retry later with the same key |
 | `concurrency_conflict` | no | The supplied base version is stale; re-read and reconcile before another update |
 | `post_write_verification_failed` | yes | Meo accepted the write but its stable target could not be read back safely |
+| `source_url_rejected` | no | A photo source URL or redirect is not public HTTPS on the permitted port |
+| `source_image_invalid` | no | A photo source has an unsupported MIME type, invalid declared size, or no usable body |
+| `source_image_too_large` | no | A streamed photo source exceeded the 10 MiB gateway limit |
+| `source_fetch_failed` | yes | A validated public photo source could not be fetched safely |
 
 Upstream `403` and `404` remain `upstream_forbidden` and
 `upstream_not_found`. No upstream response body is forwarded.

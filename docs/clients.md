@@ -58,9 +58,11 @@ each tool still enforces its own required scope.
 
 Keep the read-only command above for ordinary inspection. Request
 `pets:write` together with `pets:read`, or `health:write` together with
-`health:read`, only for an intended write workflow. Write tools require stable
-IDs, idempotency keys, and—for updates—the version returned by the matching
-read tool.
+`health:read`, only for an intended write workflow. Habits similarly pair
+`habits:read,habits:write`, and microchips pair
+`microchips:read,microchips:write`; pet-photo workflows use the pet pair. Write
+tools require stable IDs, idempotency keys, and—for updates, lifecycle actions,
+and deletes—the version returned by the matching read tool.
 
 Alternatively, open **Settings → MCP servers**, add a Streamable HTTP server,
 then select **Authenticate** and restart the app or IDE extension when prompted.

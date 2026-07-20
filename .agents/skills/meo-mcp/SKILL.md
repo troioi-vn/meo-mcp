@@ -1,6 +1,6 @@
 ---
 name: meo-mcp
-description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet and health tools with narrow read/write scopes, diagnosing structured failures, deploying safely, and adding semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, health:read, pets:write, health:write, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
+description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet, health, habit, photo, and microchip tools with narrow read/write scopes, diagnosing structured failures, deploying safely, and adding semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, habits:read, microchips:read, pets:write, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
 ---
 
 # Meo MCP gateway

@@ -26,14 +26,18 @@ contributors can use local values derived from `.env.example`.
 | Medical: `list_medical_records`, `get_medical_record` | explicit pet/record IDs | narrowed medical records | `health:read` | `health:read` | medical list/detail | read-only | Moderate |
 | Pet writes: `create_pet`, `update_pet` | explicit values/ID, idempotency key, update version | verified narrowed pet | `pets:read pets:write` | `pets:read pet:write` | pet type/create/update/detail | create or update | Moderate |
 | Health writes: add/update weight, vaccination, medical record | explicit pet/record IDs, idempotency key, update version | verified narrowed record | `health:read health:write` | matching abilities | health create/update/detail | create or update | Moderate |
+| Habit reads: list/detail/heatmap/day entries | explicit habit/date/range as applicable | narrowed habit and entry summaries | `habits:read` | `habits:read` | habit read endpoints | read-only | Moderate |
+| Habit writes: create/update/day/lifecycle/delete | explicit IDs, idempotency key, version for lifecycle/update/delete | verified habit/day or absence | `habits:read habits:write` | matching abilities | habit mutation and verification reads | create/update/delete | Moderate to high |
+| Pet photos: list/upload URL/set primary/delete | explicit pet/photo IDs, public HTTPS source for upload, idempotency key and pet version | narrowed photos and verified pet version | `pets:read pets:write` | `pets:read pet:write` | pet detail and photo mutations | read/create/update/delete | Moderate to high |
+| Microchips: list/detail/add/update/delete | explicit pet/record IDs, idempotency key, version for update/delete | narrowed record or verified absence | `microchips:read microchips:write` | matching abilities | microchip endpoints | read/create/update/delete | Moderate to high |
 
 Consult the canonical catalog for exact schemas and choose the narrowest
 non-empty scope subset needed. Write scopes are paired with the corresponding
 read scope so tools can preflight and verify. A client-side connection or
 authentication helper is not a gateway tool. MCP exchange tokens use the
 domain abilities; existing user-created generic PAT abilities remain compatible
-at the corresponding Meo endpoints (`read` for reads and `create`/`update` for
-the Phase 1B write routes).
+at corresponding Meo endpoints through their legacy `read`, `create`, `update`,
+and `delete` abilities.
 
 ## Unauthenticated probes
 
@@ -131,6 +135,7 @@ Unset the temporary environment variable when finished.
 | `idempotency_conflict` / `idempotency_in_progress` | Write retry | Reuse keys only for exact retries; wait on an in-progress request |
 | `concurrency_conflict` | Update preflight | Re-read the explicit target and reconcile against its new version |
 | `post_write_verification_failed` | Write read-back | Treat the outcome as uncertain and read the stable target before retrying |
+| `source_url_rejected` / `source_image_invalid` | Photo-source validation | Choose a public HTTPS URL returning a supported image |
 
 Tool failures use MCP `isError: true` and stable JSON fields `code`, `message`,
 `retryable`, and optional `upstream_status`. Read
