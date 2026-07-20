@@ -84,9 +84,6 @@ def _group(*, members=None, pets=None, name="Care team", version="g1"):
 async def test_create_group_is_idempotent_and_post_write_verified(tmp_path) -> None:
     app, engine, settings = await _app_with_token(tmp_path, ["groups:read", "groups:write"])
     with respx.mock:
-        respx.get("https://app.example.com/api/groups").mock(
-            return_value=httpx.Response(200, json={"data": []})
-        )
         created = respx.post("https://app.example.com/api/groups").mock(
             return_value=httpx.Response(201, json={"data": {"id": 7}})
         )
@@ -108,10 +105,59 @@ async def test_create_group_is_idempotent_and_post_write_verified(tmp_path) -> N
                     "idempotency_key": "phase4b1-create",
                 },
             )
+            replay = await _call(
+                client,
+                "create_group",
+                {
+                    "name": "Care team",
+                    "pet_ids": [],
+                    "idempotency_key": "phase4b1-create",
+                },
+            )
 
     assert result["structuredContent"]["group"]["group_id"] == 7
     assert result["structuredContent"]["verified"] is True
+    assert replay["structuredContent"]["group"]["group_id"] == 7
     assert created.calls[0].request.headers["Idempotency-Key"] == "phase4b1-create"
+    assert created.calls[1].request.headers["Idempotency-Key"] == "phase4b1-create"
+    assert created.calls[0].request.content == created.calls[1].request.content
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_create_group_translates_authoritative_duplicate_candidates(tmp_path) -> None:
+    app, engine, settings = await _app_with_token(tmp_path, ["groups:read", "groups:write"])
+    with respx.mock:
+        respx.post("https://app.example.com/api/groups").mock(
+            return_value=httpx.Response(
+                409,
+                json={
+                    "data": {
+                        "code": "duplicate_candidate",
+                        "existing_group_ids": [7],
+                    }
+                },
+            )
+        )
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            duplicate = await _call(
+                client,
+                "create_group",
+                {
+                    "name": "Care team",
+                    "pet_ids": [],
+                    "idempotency_key": "phase4b1-distinct-create",
+                },
+            )
+
+    assert duplicate["isError"] is True
+    assert duplicate["structuredContent"]["error"]["code"] == "duplicate_candidate"
+    assert duplicate["structuredContent"]["error"]["existing_group_ids"] == [7]
     await engine.dispose()
 
 

@@ -674,9 +674,11 @@ by `get_group_overview`; Meo rejects stale versions before changing membership,
 pet assignment, group identity, or invitation state.
 
 - `create_group(name, pet_ids, idempotency_key)` normalizes a required name and
-  distinct positive pet IDs. The gateway reads existing groups first and
-  returns stable duplicate candidates instead of guessing whether an equal
-  name is intentional. Exact retries return the original group.
+  distinct positive pet IDs. Meo serializes MCP creates per user and returns
+  stable visible-group IDs instead of guessing whether an equal normalized
+  name is intentional; `allow_duplicate` is required for a deliberately
+  distinct equal-name group. Idempotency resolves before this duplicate guard,
+  so exact retries return the original group.
 - `update_group(group_id, base_version, name, idempotency_key)` and
   `delete_group(group_id, base_version, expected_group_name, idempotency_key)`
   read the complete target first. Delete additionally compares the expected

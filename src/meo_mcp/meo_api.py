@@ -1465,28 +1465,12 @@ class MeoApi:
         name = self._required_text(name, "name", 255)
         pets = self._positive_id_list(pet_ids, "pet_ids", allow_empty=True)
         key = self._idempotency_key(idempotency_key)
-        existing = (await self.list_groups())["groups"]
-        duplicates = [
-            item for item in existing if str(item.get("name", "")).casefold() == name.casefold()
-        ]
-        if duplicates and not allow_duplicate:
-            self._error(
-                "duplicate_candidate",
-                "A group with the same normalized name already exists; inspect its stable ID or explicitly allow a distinct duplicate.",
-                False,
-                extra={
-                    "candidates": [
-                        {"group_id": item.get("group_id"), "name": item.get("name")}
-                        for item in duplicates
-                    ]
-                },
-            )
         delegated = await self._delegated_token("groups:read", "groups:write")
         created = await self._request(
             delegated,
             "POST",
             "/api/groups",
-            json_data={"name": name, "pet_ids": pets},
+            json_data={"name": name, "pet_ids": pets, "allow_duplicate": allow_duplicate},
             idempotency_key=key,
             expected_statuses={200, 201},
         )
@@ -3300,6 +3284,18 @@ class MeoApi:
                     False,
                     409,
                     {"existing_pet_ids": existing_pet_ids},
+                )
+            existing_group_ids = data.get("existing_group_ids") if isinstance(data, dict) else None
+            if isinstance(existing_group_ids, list) and all(
+                isinstance(value, int) and not isinstance(value, bool) and value > 0
+                for value in existing_group_ids
+            ):
+                self._error(
+                    "duplicate_candidate",
+                    "A visible group has the same normalized name.",
+                    False,
+                    409,
+                    {"existing_group_ids": existing_group_ids},
                 )
             if conflict_code == "active_placement_conflict":
                 self._error(
