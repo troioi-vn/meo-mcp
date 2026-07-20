@@ -202,6 +202,23 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "get_chat",
         "list_chat_messages",
         "get_unread_message_count",
+        "list_groups",
+        "get_group_overview",
+        "list_group_member_suggestions",
+        "list_group_invitations",
+        "list_currencies",
+        "list_ledgers",
+        "get_ledger_overview",
+        "list_ledger_member_suggestions",
+        "list_ledger_invitations",
+        "list_ledger_transactions",
+        "get_ledger_transaction",
+        "list_pet_finance_transactions",
+        "get_notification_inbox",
+        "get_notification_preferences",
+        "get_my_profile",
+        "list_owner_weights",
+        "get_account_invitation_summary",
         "create_placement_request",
         "delete_placement_request",
         "respond_to_placement_request",
@@ -233,6 +250,7 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
     assert by_name["update_pet"]["annotations"]["destructiveHint"] is True
     assert by_name["list_habits"]["annotations"]["readOnlyHint"] is True
     assert by_name["list_chat_messages"]["annotations"]["readOnlyHint"] is True
+    assert by_name["get_ledger_overview"]["annotations"]["readOnlyHint"] is True
     assert by_name["create_habit"]["annotations"]["destructiveHint"] is False
     assert by_name["create_placement_request"]["annotations"]["destructiveHint"] is False
     assert by_name["delete_own_message"]["annotations"]["destructiveHint"] is True

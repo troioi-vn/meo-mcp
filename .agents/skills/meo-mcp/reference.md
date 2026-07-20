@@ -38,6 +38,11 @@ contributors can use local values derived from `.env.example`.
 | Placement writes | explicit request/response/transfer IDs, expected names, version, idempotency key | verified lifecycle result | `placement:read` + `placement:write` | matching abilities | placement/response/transfer endpoints | write/destructive | Critical |
 | Helper-profile writes | explicit profile/photo IDs, version, idempotency key | verified private profile state | `helpers:read` + `helpers:write` | matching abilities | helper lifecycle/photo endpoints | write/destructive | Critical |
 | Placement messaging writes | explicit chat/counterparty/message IDs, expected content where deleting, version, idempotency key | verified chat/message state | `messages:read` + `messages:write` (plus `placement:read` to open) | matching abilities | messaging endpoints | write/destructive | Critical |
+| Group reads: list/overview/suggestions/invitations | explicit group ID where applicable | narrowed group membership, pets, candidates, or pending bearer invitations | `groups:read` | `groups:read` | group read endpoints | read-only | High |
+| Finance reads: currencies/ledgers/overview/transactions | explicit ledger/transaction/pet IDs plus bounded filters | narrowed configuration, totals, members, pets, and transaction records | `finance:read` | `finance:read` | finance read endpoints | read-only | Critical |
+| Notification reads: inbox/preferences | bounded notification limit | narrowed notifications, action keys, unread counts, and delivery settings | `notifications:read` | `notifications:read` | notification read endpoints | read-only | High |
+| Self-profile reads: profile/owner weights | optional positive page | narrowed identity, account state, storage, and personal weight records | `profile:read` | `profile:read` | self-profile read endpoints | read-only | Critical |
+| Account invitation summary | none | sent onboarding invitations and lifecycle counts | `invitations:read` | `invitations:read` | account invitation read endpoints | read-only | High |
 
 Consult the canonical catalog for exact schemas and choose the narrowest
 non-empty scope subset needed. Write scopes are paired with the corresponding

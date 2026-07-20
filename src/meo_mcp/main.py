@@ -139,7 +139,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
         "Meo Mai Moi",
         instructions=(
             "Read and safely update Meo Mai Moi pets, health history, habits, photos, "
-            "microchips, pet sharing, placement opportunities, helper profiles, and messages. "
+            "microchips, pet sharing, placement opportunities, helper profiles, messages, "
+            "groups, finances, notifications, self profile, and invitations. "
             "Resolve names to stable IDs, read targets before updates, preserve the returned "
             "version, and reuse an idempotency key only for an exact write retry."
         ),
@@ -933,6 +934,118 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def get_unread_message_count() -> CallToolResult:
         """Get the authenticated user's total unread message count."""
         return await call(api.get_unread_message_count)
+
+    @server.tool(annotations=read_annotations)
+    async def list_groups() -> CallToolResult:
+        """List groups the caller belongs to with role, member, and pet counts."""
+        return await call(api.list_groups)
+
+    @server.tool(annotations=read_annotations)
+    async def get_group_overview(group_id: int) -> CallToolResult:
+        """Read one explicit group with narrowed members, roles, pets, and version."""
+        return await call(api.get_group_overview, group_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_group_member_suggestions(group_id: int) -> CallToolResult:
+        """List known-user candidates before an explicit group membership write."""
+        return await call(api.list_group_member_suggestions, group_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_group_invitations(group_id: int) -> CallToolResult:
+        """List pending bearer invitations for one explicitly managed group."""
+        return await call(api.list_group_invitations, group_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_currencies() -> CallToolResult:
+        """List supported finance currency codes, symbols, and minor-unit precision."""
+        return await call(api.list_currencies)
+
+    @server.tool(annotations=read_annotations)
+    async def list_ledgers(archived: bool = False) -> CallToolResult:
+        """List the caller's accessible active or archived finance ledgers."""
+        return await call(api.list_ledgers, archived)
+
+    @server.tool(annotations=read_annotations)
+    async def get_ledger_overview(ledger_id: int) -> CallToolResult:
+        """Aggregate one ledger's detail, totals, configuration, members, pets, and trend."""
+        return await call(api.get_ledger_overview, ledger_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_ledger_member_suggestions(ledger_id: int) -> CallToolResult:
+        """List known-user candidates before an explicit ledger membership write."""
+        return await call(api.list_ledger_member_suggestions, ledger_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_ledger_invitations(ledger_id: int) -> CallToolResult:
+        """List pending bearer invitations for one explicitly managed ledger."""
+        return await call(api.list_ledger_invitations, ledger_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_ledger_transactions(
+        ledger_id: int,
+        page: int = 1,
+        per_page: int = 25,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        transaction_type: Literal["income", "expense"] | None = None,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        pet_id: int | None = None,
+        creator_id: int | None = None,
+        search: str | None = None,
+    ) -> CallToolResult:
+        """Page and filter transactions in one explicit accessible ledger."""
+        return await call(
+            api.list_ledger_transactions,
+            ledger_id,
+            page,
+            per_page,
+            date_from,
+            date_to,
+            transaction_type,
+            account_id,
+            category_id,
+            pet_id,
+            creator_id,
+            search,
+        )
+
+    @server.tool(annotations=read_annotations)
+    async def get_ledger_transaction(ledger_id: int, transaction_id: int) -> CallToolResult:
+        """Read one exact transaction and whether an authority-held receipt exists."""
+        return await call(api.get_ledger_transaction, ledger_id, transaction_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_pet_finance_transactions(pet_id: int, page: int = 1) -> CallToolResult:
+        """List finance transactions linked to one pet across accessible ledgers."""
+        return await call(api.list_pet_finance_transactions, pet_id, page)
+
+    @server.tool(annotations=read_annotations)
+    async def get_notification_inbox(
+        limit: int = 20, include_notifications: bool = True
+    ) -> CallToolResult:
+        """Read bounded bell notifications and unread bell/message counts without mutation."""
+        return await call(api.get_notification_inbox, limit, include_notifications)
+
+    @server.tool(annotations=read_annotations)
+    async def get_notification_preferences() -> CallToolResult:
+        """Read per-event email, in-app, and Telegram delivery preferences."""
+        return await call(api.get_notification_preferences)
+
+    @server.tool(annotations=read_annotations)
+    async def get_my_profile() -> CallToolResult:
+        """Read a narrowed self profile, account state, storage, and weight summary."""
+        return await call(api.get_my_profile)
+
+    @server.tool(annotations=read_annotations)
+    async def list_owner_weights(page: int = 1) -> CallToolResult:
+        """Page the caller's own body-weight history."""
+        return await call(api.list_owner_weights, page)
+
+    @server.tool(annotations=read_annotations)
+    async def get_account_invitation_summary() -> CallToolResult:
+        """Read sent onboarding invitations and their lifecycle totals."""
+        return await call(api.get_account_invitation_summary)
 
     @server.tool(annotations=create_annotations)
     async def create_placement_request(

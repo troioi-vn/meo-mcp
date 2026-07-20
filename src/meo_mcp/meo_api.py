@@ -1421,6 +1421,225 @@ class MeoApi:
             self._error("upstream_malformed", "Meo returned a malformed unread count.", True)
         return {"unread_message_count": count}
 
+    async def list_groups(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("groups:read")
+        payload = await self._get(delegated, "/api/groups")
+        return {"groups": [self._group_summary(item) for item in self._items(payload)]}
+
+    async def get_group_overview(self, group_id: int) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        delegated = await self._delegated_token("groups:read")
+        item = self._object(await self._get(delegated, f"/api/groups/{group_id}"))
+        return {"group": self._group(item)}
+
+    async def list_group_member_suggestions(self, group_id: int) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        delegated = await self._delegated_token("groups:read")
+        payload = await self._get(delegated, f"/api/groups/{group_id}/member-suggestions")
+        return {"suggestions": [self._user_reference(item) for item in self._items(payload)]}
+
+    async def list_group_invitations(self, group_id: int) -> dict[str, Any]:
+        self._positive(group_id, "group_id")
+        delegated = await self._delegated_token("groups:read")
+        payload = await self._get(delegated, f"/api/groups/{group_id}/invitations")
+        return {"invitations": [self._resource_invitation(item) for item in self._items(payload)]}
+
+    async def list_currencies(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("finance:read")
+        payload = await self._get(delegated, "/api/currencies")
+        return {"currencies": [self._currency(item) for item in self._items(payload)]}
+
+    async def list_ledgers(self, archived: bool = False) -> dict[str, Any]:
+        delegated = await self._delegated_token("finance:read")
+        payload = await self._get(delegated, "/api/ledgers", {"archived": archived})
+        return {"ledgers": [self._ledger(item) for item in self._items(payload)]}
+
+    async def get_ledger_overview(self, ledger_id: int) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        delegated = await self._delegated_token("finance:read")
+        paths = (
+            f"/api/ledgers/{ledger_id}",
+            f"/api/ledgers/{ledger_id}/dashboard",
+            f"/api/ledgers/{ledger_id}/accounts",
+            f"/api/ledgers/{ledger_id}/categories",
+            f"/api/ledgers/{ledger_id}/members",
+            f"/api/ledgers/{ledger_id}/pets",
+        )
+        detail, dashboard, accounts, categories, members, pets = await asyncio.gather(
+            *(self._get(delegated, path) for path in paths)
+        )
+        return {
+            "ledger": self._ledger(self._object(detail)),
+            "dashboard": self._ledger_dashboard(self._object(dashboard)),
+            "accounts": [self._ledger_account(item) for item in self._items(accounts)],
+            "categories": [self._ledger_category(item) for item in self._items(categories)],
+            "members": [self._ledger_member(item) for item in self._items(members)],
+            "pets": [self._ledger_pet(item) for item in self._items(pets)],
+        }
+
+    async def list_ledger_member_suggestions(self, ledger_id: int) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        delegated = await self._delegated_token("finance:read")
+        payload = await self._get(delegated, f"/api/ledgers/{ledger_id}/member-suggestions")
+        return {"suggestions": [self._user_reference(item) for item in self._items(payload)]}
+
+    async def list_ledger_invitations(self, ledger_id: int) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        delegated = await self._delegated_token("finance:read")
+        payload = await self._get(delegated, f"/api/ledgers/{ledger_id}/invitations")
+        return {"invitations": [self._resource_invitation(item) for item in self._items(payload)]}
+
+    async def list_ledger_transactions(
+        self,
+        ledger_id: int,
+        page: int = 1,
+        per_page: int = 25,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        transaction_type: str | None = None,
+        account_id: int | None = None,
+        category_id: int | None = None,
+        pet_id: int | None = None,
+        creator_id: int | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._bounded_page(page, per_page)
+        if date_from and date_to and date_to < date_from:
+            self._error("validation_error", "date_to must not precede date_from.", False)
+        if transaction_type is not None and transaction_type not in {"income", "expense"}:
+            self._error("validation_error", "transaction_type must be income or expense.", False)
+        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        for key, value in {
+            "account_id": account_id,
+            "category_id": category_id,
+            "pet_id": pet_id,
+            "creator_id": creator_id,
+        }.items():
+            if value is not None:
+                self._positive(value, key)
+                params[key] = value
+        if date_from is not None:
+            params["date_from"] = date_from.isoformat()
+        if date_to is not None:
+            params["date_to"] = date_to.isoformat()
+        if transaction_type is not None:
+            params["type"] = transaction_type
+        if search is not None:
+            params["search"] = self._required_text(search, "search", 255)
+        delegated = await self._delegated_token("finance:read")
+        data = self._object(
+            await self._get(delegated, f"/api/ledgers/{ledger_id}/transactions", params)
+        )
+        items = data.get("items")
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            self._error("upstream_malformed", "Meo returned malformed transaction data.", True)
+        return {
+            "transactions": [self._ledger_transaction(item) for item in items],
+            "pagination": self._simple_pagination(data),
+        }
+
+    async def get_ledger_transaction(self, ledger_id: int, transaction_id: int) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(transaction_id, "transaction_id")
+        delegated = await self._delegated_token("finance:read")
+        item = self._object(
+            await self._get(delegated, f"/api/ledgers/{ledger_id}/transactions/{transaction_id}")
+        )
+        return {"transaction": self._ledger_transaction(item)}
+
+    async def list_pet_finance_transactions(self, pet_id: int, page: int = 1) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._bounded_page(page, 20)
+        delegated = await self._delegated_token("finance:read")
+        data = self._object(
+            await self._get(delegated, f"/api/pets/{pet_id}/finance-transactions", {"page": page})
+        )
+        items = data.get("items")
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            self._error("upstream_malformed", "Meo returned malformed transaction data.", True)
+        return {
+            "transactions": [self._ledger_transaction(item) for item in items],
+            "pagination": self._simple_pagination(data, default_per_page=20),
+        }
+
+    async def get_notification_inbox(
+        self, limit: int = 20, include_notifications: bool = True
+    ) -> dict[str, Any]:
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+            self._error("validation_error", "limit must be between 1 and 50.", False)
+        delegated = await self._delegated_token("notifications:read")
+        data = self._object(
+            await self._get(
+                delegated,
+                "/api/notifications/unified",
+                {"limit": limit, "include_bell_notifications": include_notifications},
+            )
+        )
+        notifications = data.get("bell_notifications")
+        if not isinstance(notifications, list) or any(
+            not isinstance(item, dict) for item in notifications
+        ):
+            self._error("upstream_malformed", "Meo returned malformed notification data.", True)
+        counts = (data.get("unread_bell_count"), data.get("unread_message_count"))
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in counts
+        ):
+            self._error("upstream_malformed", "Meo returned malformed unread counts.", True)
+        return {
+            "notifications": [self._notification(item) for item in notifications],
+            "unread_bell_count": counts[0],
+            "unread_message_count": counts[1],
+        }
+
+    async def get_notification_preferences(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("notifications:read")
+        payload = await self._get(delegated, "/api/notification-preferences")
+        return {
+            "preferences": [self._notification_preference(item) for item in self._items(payload)]
+        }
+
+    async def get_my_profile(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("profile:read")
+        item = self._object(await self._get(delegated, "/api/users/me"))
+        return {"profile": self._profile(item)}
+
+    async def list_owner_weights(self, page: int = 1) -> dict[str, Any]:
+        self._bounded_page(page, 25)
+        delegated = await self._delegated_token("profile:read")
+        data = self._object(
+            await self._get(delegated, "/api/users/me/owner-weights", {"page": page})
+        )
+        items, meta = data.get("data"), data.get("meta")
+        if (
+            not isinstance(items, list)
+            or any(not isinstance(item, dict) for item in items)
+            or not isinstance(meta, dict)
+        ):
+            self._error("upstream_malformed", "Meo returned malformed owner-weight data.", True)
+        return {
+            "weights": [self._owner_weight(item) for item in items],
+            "pagination": self._simple_pagination(meta, default_per_page=25),
+        }
+
+    async def get_account_invitation_summary(self) -> dict[str, Any]:
+        delegated = await self._delegated_token("invitations:read")
+        invitations, stats = await asyncio.gather(
+            self._get(delegated, "/api/invitations"),
+            self._get(delegated, "/api/invitations/stats"),
+        )
+        counts = self._object(stats)
+        for key in ("total", "pending", "accepted", "expired", "revoked"):
+            value = counts.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                self._error("upstream_malformed", "Meo returned malformed invitation totals.", True)
+        return {
+            "invitations": [self._account_invitation(item) for item in self._items(invitations)],
+            "counts": {
+                key: counts[key] for key in ("total", "pending", "accepted", "expired", "revoked")
+            },
+        }
+
     async def create_placement_request(
         self,
         pet_id: int,
@@ -3298,6 +3517,321 @@ class MeoApi:
             "created_at": item.get("created_at"),
             "version": item.get("updated_at", item.get("version")),
         }
+
+    @staticmethod
+    def _group_summary(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "group_id": item.get("id"),
+            "name": item.get("name"),
+            "viewer_role": item.get("viewer_role"),
+            "member_count": item.get("member_count"),
+            "pet_count": item.get("pet_count"),
+        }
+
+    @classmethod
+    def _group(cls, item: dict[str, Any]) -> dict[str, Any]:
+        members = item.get("members") if isinstance(item.get("members"), list) else []
+        pets = item.get("pets") if isinstance(item.get("pets"), list) else []
+        return {
+            **cls._group_summary(item),
+            "created_at": item.get("created_at"),
+            "version": item.get("updated_at", item.get("version")),
+            "members": [cls._group_member(value) for value in members if isinstance(value, dict)],
+            "pets": [cls._group_pet(value) for value in pets if isinstance(value, dict)],
+        }
+
+    @staticmethod
+    def _group_member(item: dict[str, Any]) -> dict[str, Any]:
+        user = item.get("user") if isinstance(item.get("user"), dict) else {}
+        return {
+            "user_id": item.get("user_id", user.get("id")),
+            "user_name": user.get("name", item.get("name")),
+            "role": item.get("role"),
+            "start_at": item.get("start_at"),
+        }
+
+    @staticmethod
+    def _group_pet(item: dict[str, Any]) -> dict[str, Any]:
+        pet_type = item.get("pet_type") if isinstance(item.get("pet_type"), dict) else {}
+        return {
+            "pet_id": item.get("id", item.get("pet_id")),
+            "pet_name": item.get("name", item.get("pet_name")),
+            "pet_type_id": pet_type.get("id", item.get("pet_type_id")),
+            "species": pet_type.get("name", item.get("species")),
+            "photo_url": item.get("photo_url"),
+        }
+
+    @staticmethod
+    def _user_reference(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "user_id": item.get("id", item.get("user_id")),
+            "user_name": item.get("name", item.get("user_name")),
+        }
+
+    @staticmethod
+    def _resource_invitation(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "invitation_id": item.get("id", item.get("invitation_id")),
+            "type": item.get("type"),
+            "status": item.get("status"),
+            "group_id": item.get("group_id"),
+            "group_name": item.get("group_name"),
+            "ledger_id": item.get("ledger_id"),
+            "ledger_title": item.get("ledger_title"),
+            "role": item.get("role"),
+            "expires_at": item.get("expires_at"),
+            "created_at": item.get("created_at"),
+            "version": item.get("updated_at", item.get("version")),
+            "invitation_url": item.get("invitation_url"),
+        }
+
+    @staticmethod
+    def _currency(item: dict[str, Any]) -> dict[str, Any]:
+        return {key: item.get(key) for key in ("code", "name", "symbol", "minor_units")}
+
+    @classmethod
+    def _ledger(cls, item: dict[str, Any]) -> dict[str, Any]:
+        currency = item.get("currency") if isinstance(item.get("currency"), dict) else None
+        members = item.get("members") if isinstance(item.get("members"), list) else []
+        return {
+            "ledger_id": item.get("id", item.get("ledger_id")),
+            "title": item.get("title"),
+            "currency_code": item.get("currency_code"),
+            "currency": cls._currency(currency) if currency is not None else None,
+            "group_id": item.get("group_id"),
+            "sync_group_pets": bool(item.get("sync_group_pets")),
+            "archived_at": item.get("archived_at"),
+            "member_count": item.get("member_count"),
+            "pet_count": item.get("pet_count"),
+            "can_delete": bool(item.get("can_delete")),
+            "members": [cls._ledger_member(value) for value in members if isinstance(value, dict)],
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _ledger_member(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "user_id": item.get("user_id", item.get("id")),
+            "user_name": item.get("name", item.get("user_name")),
+            "start_at": item.get("start_at"),
+        }
+
+    @staticmethod
+    def _ledger_account(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "account_id": item.get("id", item.get("account_id")),
+            "name": item.get("name"),
+            "archived_at": item.get("archived_at"),
+            "income_minor": item.get("income_minor"),
+            "expense_minor": item.get("expense_minor"),
+            "net_activity_minor": item.get("net_activity_minor"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _ledger_category(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "category_id": item.get("id", item.get("category_id")),
+            "name": item.get("name"),
+            "applies_to": item.get("applies_to"),
+            "archived_at": item.get("archived_at"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _ledger_pet(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "pet_id": item.get("id", item.get("pet_id")),
+            "pet_name": item.get("name", item.get("pet_name")),
+            "photo_url": item.get("photo_url"),
+            "can_view_profile": bool(item.get("can_view_profile")),
+            "sources": [value for value in item.get("sources", []) if isinstance(value, str)]
+            if isinstance(item.get("sources"), list)
+            else [],
+            "income_minor": item.get("income_minor"),
+            "expense_minor": item.get("expense_minor"),
+            "net_activity_minor": item.get("net_activity_minor"),
+        }
+
+    @classmethod
+    def _ledger_dashboard(cls, item: dict[str, Any]) -> dict[str, Any]:
+        def records(key: str, mapper) -> list[dict[str, Any]]:
+            values = item.get(key)
+            return (
+                [mapper(value) for value in values if isinstance(value, dict)]
+                if isinstance(values, list)
+                else []
+            )
+
+        def totals(value: Any) -> dict[str, Any]:
+            value = value if isinstance(value, dict) else {}
+            return {key: value.get(key) for key in ("income", "expense", "net_activity")}
+
+        def named_total(value: dict[str, Any]) -> dict[str, Any]:
+            return {key: value.get(key) for key in ("id", "name", "total")}
+
+        return {
+            "current_month": totals(item.get("current_month")),
+            "previous_month": totals(item.get("previous_month")),
+            "accounts": records("accounts", cls._ledger_account),
+            "spending_by_category": records("spending_by_category", named_total),
+            "income_by_category": records("income_by_category", named_total),
+            "spending_by_pet": records("spending_by_pet", named_total),
+            "monthly_trend": records(
+                "monthly_trend",
+                lambda value: {key: value.get(key) for key in ("month", "income", "expense")},
+            ),
+            "recent_transactions": records("recent_transactions", cls._ledger_transaction),
+        }
+
+    @staticmethod
+    def _ledger_transaction(item: dict[str, Any]) -> dict[str, Any]:
+        creator = item.get("created_by") if isinstance(item.get("created_by"), dict) else {}
+        pets = item.get("pets") if isinstance(item.get("pets"), list) else []
+        return {
+            "transaction_id": item.get("id", item.get("transaction_id")),
+            "ledger_id": item.get("ledger_id"),
+            "account_id": item.get("account_id"),
+            "account_name": item.get("account_name"),
+            "category_id": item.get("category_id"),
+            "category_name": item.get("category_name"),
+            "type": item.get("type"),
+            "amount_minor": item.get("amount_minor"),
+            "amount": item.get("amount"),
+            "occurred_on": item.get("occurred_on"),
+            "description": item.get("description"),
+            "created_by": {"user_id": creator.get("id"), "user_name": creator.get("name")},
+            "pets": [
+                {
+                    "pet_id": value.get("id"),
+                    "pet_name": value.get("name"),
+                    "pet_name_snapshot": value.get("name_snapshot"),
+                }
+                for value in pets
+                if isinstance(value, dict)
+            ],
+            "has_receipt": bool(item.get("has_receipt")),
+            "created_at": item.get("created_at"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @classmethod
+    def _notification(cls, item: dict[str, Any]) -> dict[str, Any]:
+        actions = item.get("actions") if isinstance(item.get("actions"), list) else []
+        return {
+            "notification_id": item.get("id", item.get("notification_id")),
+            "level": item.get("level"),
+            "title": item.get("title"),
+            "body": item.get("body"),
+            "url": cls._safe_app_path(item.get("url")),
+            "actions": [
+                {
+                    "key": action.get("key", action.get("action_key")),
+                    "label": action.get("label"),
+                    "style": action.get("style"),
+                }
+                for action in actions
+                if isinstance(action, dict)
+            ],
+            "created_at": item.get("created_at"),
+            "read_at": item.get("read_at"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _notification_preference(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: item.get(key)
+            for key in (
+                "type",
+                "label",
+                "description",
+                "group",
+                "group_label",
+                "email_enabled",
+                "in_app_enabled",
+                "telegram_enabled",
+            )
+        }
+
+    @staticmethod
+    def _profile(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "user_id": item.get("id", item.get("user_id")),
+            "name": item.get("name"),
+            "email": item.get("email"),
+            "locale": item.get("locale", item.get("language")),
+            "timezone": item.get("timezone"),
+            "avatar_url": item.get("avatar_url"),
+            "has_password": bool(item.get("has_password")),
+            "email_verified_at": item.get("email_verified_at"),
+            "is_premium": bool(item.get("is_premium")),
+            "is_banned": bool(item.get("is_banned")),
+            "banned_at": item.get("banned_at"),
+            "ban_reason": item.get("ban_reason"),
+            "storage_used_bytes": item.get("storage_used_bytes"),
+            "storage_limit_bytes": item.get("storage_limit_bytes"),
+            "owner_weight_kg": item.get("owner_weight_kg"),
+            "owner_weight_recorded_at": item.get("owner_weight_recorded_at"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _owner_weight(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "weight_id": item.get("id", item.get("weight_id")),
+            "weight_kg": item.get("weight_kg"),
+            "record_date": item.get("record_date"),
+            "notes": item.get("notes"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _account_invitation(item: dict[str, Any]) -> dict[str, Any]:
+        recipient = item.get("recipient") if isinstance(item.get("recipient"), dict) else None
+        return {
+            "invitation_id": item.get("id", item.get("invitation_id")),
+            "code": item.get("code"),
+            "status": item.get("status"),
+            "expires_at": item.get("expires_at"),
+            "created_at": item.get("created_at"),
+            "invitation_url": item.get("invitation_url"),
+            "recipient": (
+                {
+                    "user_id": recipient.get("id"),
+                    "user_name": recipient.get("name"),
+                    "email": recipient.get("email"),
+                }
+                if recipient is not None
+                else None
+            ),
+        }
+
+    @classmethod
+    def _bounded_page(cls, page: int, per_page: int) -> None:
+        if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+            cls._error("validation_error", "page must be a positive integer.", False)
+        if isinstance(per_page, bool) or not isinstance(per_page, int) or not 1 <= per_page <= 100:
+            cls._error("validation_error", "per_page must be between 1 and 100.", False)
+
+    @staticmethod
+    def _simple_pagination(
+        item: dict[str, Any], *, default_per_page: int | None = None
+    ) -> dict[str, Any]:
+        return {
+            "current_page": item.get("current_page"),
+            "last_page": item.get("last_page"),
+            "per_page": item.get("per_page", default_per_page),
+            "total": item.get("total"),
+        }
+
+    @staticmethod
+    def _safe_app_path(value: Any) -> str | None:
+        return (
+            value
+            if isinstance(value, str) and value.startswith("/") and not value.startswith("//")
+            else None
+        )
 
     @staticmethod
     def _find_relationship(
