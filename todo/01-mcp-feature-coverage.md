@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 4A complete; Phase 4B is next)
+Status: in progress (Phases 1A through 4B1 complete; Phase 4B2 is next)
 
 ## Goal
 
@@ -166,7 +166,7 @@ deployed the tool surface and matching error translation.
 - [x] Phase 4A: finance summaries, configuration, and transaction reads before
       any finance mutation
 - [x] Phase 4A: Meo abilities, tests, deployment, and real-client smoke
-- [ ] Phase 4B1: separately reviewed group and group-invitation writes, with a
+- [x] Phase 4B1: separately reviewed group and group-invitation writes, with a
       tested/deployed/accepted checkpoint before finance
 - [ ] Phase 4B2: separately reviewed finance/ledger and ledger-invitation writes
       with narrow scopes and audit-friendly semantics, followed by its own
@@ -191,6 +191,21 @@ the independent pet-finance path returned a valid paginated record. No bearer
 invitation material or private response content was retained. Meo pipeline
 `#318` deployed `97ad863c`; gateway pipeline `#32` deployed `414e507`.
 Both GPT connector environments remained healthy and able to reach Meo.
+
+Phase 4B1 development acceptance on 2026-07-20 used a fresh twenty-two-scope
+Codex grant and discovered all 117 tools, including all 14 group write and
+invitation tools. A disposable group verified create/update/delete exact
+replays, stale-version rejection, owned-pet assignment/removal replays, group-
+invitation create/revoke replays, post-write reads, and complete cleanup. The
+live run exposed and then verified a fix for duplicate preflight running ahead
+of idempotency replay; a different key for the same normalized name now returns
+`duplicate_candidate`, while the original key returns its original group.
+Member-role and recipient invitation mutations remained covered by automated
+tests to avoid granting another user access during acceptance. Meo pipelines
+`#319` and `#320` deployed `a404ac2d` and `1b4f36eb`; gateway pipelines `#34`
+and `#35` deployed `e68a5d8` and `0acb59a`. No bearer invitation material,
+personal response content, or disposable artifact was retained. Both GPT
+connector environments remained healthy and able to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
