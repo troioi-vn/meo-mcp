@@ -106,6 +106,49 @@ class MeoApi:
             "pet_types": [{key: item.get(key) for key in fields} for item in self._items(payload)]
         }
 
+    async def list_pet_categories(
+        self, pet_type_id: int, search: str | None = None
+    ) -> dict[str, Any]:
+        self._positive(pet_type_id, "pet_type_id")
+        search = self._optional_text(search, "search", 50)
+        delegated = await self._delegated_token("pets:read")
+        params: dict[str, Any] = {"pet_type_id": pet_type_id}
+        if search is not None:
+            params["search"] = search
+        payload = await self._get(delegated, "/api/categories", params)
+        return {"categories": [self._pet_category(item) for item in self._items(payload)]}
+
+    async def create_pet_category(
+        self,
+        name: str,
+        pet_type_id: int,
+        idempotency_key: str,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_type_id, "pet_type_id")
+        name = self._required_text(name, "name", 50)
+        description = self._optional_text(description, "description", 500)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        upstream: dict[str, Any] = {"name": name, "pet_type_id": pet_type_id}
+        if description is not None:
+            upstream["description"] = description
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                "/api/categories",
+                json_data=upstream,
+                idempotency_key=self._idempotency_key(idempotency_key),
+                expected_statuses={201},
+            )
+        )
+        category = self._pet_category(created)
+        category_id = category.get("category_id")
+        matches = await self._verify(self.list_pet_categories, pet_type_id, name)
+        if not any(item.get("category_id") == category_id for item in matches["categories"]):
+            self._verification_error("The created pet category could not be verified.")
+        return {"category": category, "verified": True}
+
     async def list_weights(self, pet_id: int, page: int = 1) -> dict[str, Any]:
         return await self._health_list(pet_id, page, "weights", "weights", self._weight)
 
@@ -264,6 +307,7 @@ class MeoApi:
         birth_month_year: str | None = None,
         age_months: int | None = None,
         description: str | None = None,
+        category_ids: list[int] | None = None,
         allow_duplicate: bool = False,
     ) -> dict[str, Any]:
         delegated = await self._delegated_token("pets:read", "pets:write")
@@ -275,6 +319,7 @@ class MeoApi:
         normalized_sex = self._sex(sex)
         birthday = self._birth_fields(birth_date, birth_month_year, age_months)
         pet_type_id, _ = await self._resolve_pet_type(species)
+        categories = self._positive_ids(category_ids, "category_ids")
 
         upstream: dict[str, Any] = {
             "name": name,
@@ -287,6 +332,8 @@ class MeoApi:
             upstream["sex"] = normalized_sex
         if description is not None:
             upstream["description"] = description
+        if category_ids is not None:
+            upstream["category_ids"] = categories
         created = await self._request(
             delegated,
             "POST",
@@ -311,6 +358,7 @@ class MeoApi:
         birth_month_year: str | None = None,
         age_months: int | None = None,
         description: str | None = None,
+        category_ids: list[int] | None = None,
     ) -> dict[str, Any]:
         self._positive(pet_id, "pet_id")
         await self._delegated_token("pets:read", "pets:write")
@@ -328,6 +376,8 @@ class MeoApi:
             upstream["sex"] = self._sex(sex)
         if description is not None:
             upstream["description"] = self._required_text(description, "description")
+        if category_ids is not None:
+            upstream["category_ids"] = self._positive_ids(category_ids, "category_ids")
         upstream.update(self._birth_fields(birth_date, birth_month_year, age_months))
         self._require_changes(upstream)
         upstream["base_version"] = base_version
@@ -341,6 +391,74 @@ class MeoApi:
         )
         verified = await self._verify(self.get_pet, pet_id)
         return {"pet": verified["pet"], "verified": True}
+
+    async def update_pet_status(
+        self,
+        pet_id: int,
+        status: str,
+        expected_name: str,
+        expected_status: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        status = self._required_text(status, "status", 32)
+        expected_name = self._required_text(expected_name, "expected_name", 255)
+        expected_status = self._required_text(expected_status, "expected_status", 32)
+        if status == "deleted":
+            self._error("validation_error", "Use delete_pet for deleted status.", False)
+        current = (await self.get_pet(pet_id))["pet"]
+        if current.get("name") != expected_name or current.get("status") != expected_status:
+            self._error("target_mismatch", "The pet name or status does not match.", False)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/pets/{pet_id}/status",
+            json_data={
+                "status": status,
+                "expected_name": expected_name,
+                "expected_status": expected_status,
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        pet = (await self._verify(self.get_pet, pet_id))["pet"]
+        if pet.get("status") != status:
+            self._verification_error("The pet status update could not be verified.")
+        return {"pet": pet, "verified": True}
+
+    async def delete_pet(
+        self,
+        pet_id: int,
+        expected_name: str,
+        expected_status: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        expected_name = self._required_text(expected_name, "expected_name", 255)
+        expected_status = self._required_text(expected_status, "expected_status", 32)
+        current = (await self.get_pet(pet_id))["pet"]
+        if current.get("name") != expected_name or current.get("status") != expected_status:
+            self._error("target_mismatch", "The pet name or status does not match.", False)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}",
+            json_data={
+                "expected_name": expected_name,
+                "expected_status": expected_status,
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        pets = (await self._verify(self.list_pets))["pets"]
+        if any(item.get("id") == pet_id for item in pets):
+            self._verification_error("The pet deletion could not be verified.")
+        return {"pet_id": pet_id, "deleted": True, "verified": True}
 
     async def add_weight(
         self,
@@ -1375,6 +1493,36 @@ class MeoApi:
             "countries": [],
             "cities": [self._city_option(item) for item in self._items(payload)],
         }
+
+    async def create_helper_city_option(
+        self,
+        name: str,
+        country: str,
+        idempotency_key: str,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        name = self._required_text(name, "name", 100)
+        country = self._country(country)
+        description = self._optional_text(description, "description", 500)
+        delegated = await self._delegated_token("helpers:read", "helpers:write")
+        upstream: dict[str, Any] = {"name": name, "country": country}
+        if description is not None:
+            upstream["description"] = description
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                "/api/cities",
+                json_data=upstream,
+                idempotency_key=self._idempotency_key(idempotency_key),
+                expected_statuses={201},
+            )
+        )
+        city = self._city_option(created)
+        matches = await self._verify(self.list_helper_location_options, country, name)
+        if not any(item.get("city_id") == city.get("city_id") for item in matches["cities"]):
+            self._verification_error("The created helper city option could not be verified.")
+        return {"city": city, "verified": True}
 
     async def list_chats(self) -> dict[str, Any]:
         delegated = await self._delegated_token("messages:read")
@@ -3023,6 +3171,30 @@ class MeoApi:
             self._verification_error("The profile name update could not be verified.")
         return {"profile": verified["profile"], "verified": True}
 
+    async def update_my_locale(
+        self, locale: str, base_version: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        locale = self._required_text(locale, "locale", 16)
+        current = (await self.get_my_profile())["profile"]
+        self._require_version_available(current)
+        supported = self._object(await self._get(None, "/api/locale")).get("supported")
+        if not isinstance(supported, list) or any(not isinstance(item, str) for item in supported):
+            self._error("upstream_malformed", "Meo returned malformed locale options.", True)
+        if locale not in supported:
+            self._error("validation_error", "locale is not supported by Meo.", False)
+        delegated = await self._delegated_token("profile:read", "profile:write")
+        await self._request(
+            delegated,
+            "PUT",
+            "/api/user/locale",
+            json_data={"locale": locale, "base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        verified = await self._verify(self.get_my_profile)
+        if verified["profile"].get("locale") != locale:
+            self._verification_error("The locale update could not be verified.")
+        return {"profile": verified["profile"], "verified": True}
+
     async def upload_my_avatar_from_url(
         self, source_url: str, base_version: str, idempotency_key: str
     ) -> dict[str, Any]:
@@ -4609,6 +4781,22 @@ class MeoApi:
                     409,
                     {"existing_pet_ids": existing_pet_ids},
                 )
+            for field, message in (
+                ("existing_category_ids", "A visible category has the same name and pet type."),
+                ("existing_city_ids", "A visible city has the same name and country."),
+            ):
+                existing_ids = data.get(field) if isinstance(data, dict) else None
+                if isinstance(existing_ids, list) and all(
+                    isinstance(value, int) and not isinstance(value, bool) and value > 0
+                    for value in existing_ids
+                ):
+                    self._error(
+                        "duplicate_candidate",
+                        message,
+                        False,
+                        409,
+                        {field: existing_ids},
+                    )
             existing_group_ids = data.get("existing_group_ids") if isinstance(data, dict) else None
             if isinstance(existing_group_ids, list) and all(
                 isinstance(value, int) and not isinstance(value, bool) and value > 0
@@ -4820,7 +5008,25 @@ class MeoApi:
             },
         }
         detail["version"] = detail.pop("updated_at", None)
+        categories = pet.get("categories")
+        detail["categories"] = (
+            [cls._pet_category(item) for item in categories if isinstance(item, dict)]
+            if isinstance(categories, list)
+            else []
+        )
         return detail
+
+    @staticmethod
+    def _pet_category(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "category_id": item.get("id", item.get("category_id")),
+            "name": item.get("name"),
+            "slug": item.get("slug"),
+            "pet_type_id": item.get("pet_type_id"),
+            "description": item.get("description"),
+            "approved": item.get("approved_at") is not None,
+            "version": item.get("updated_at", item.get("version")),
+        }
 
     @staticmethod
     def _weight(item: dict[str, Any]) -> dict[str, Any]:
@@ -5281,7 +5487,14 @@ class MeoApi:
         name = item.get("name")
         if isinstance(name, dict):
             name = next((value for value in name.values() if isinstance(value, str)), None)
-        return {"city_id": item.get("id"), "name": name, "country": item.get("country")}
+        return {
+            "city_id": item.get("id"),
+            "name": name,
+            "country": item.get("country"),
+            "description": item.get("description"),
+            "approved": item.get("approved_at") is not None,
+            "version": item.get("updated_at", item.get("version")),
+        }
 
     @staticmethod
     def _placement_pet(item: dict[str, Any]) -> dict[str, Any]:
@@ -6153,6 +6366,20 @@ class MeoApi:
     def _positive(cls, value: int, field: str) -> None:
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             cls._error("validation_error", f"{field} must be a positive integer.", False)
+
+    @classmethod
+    def _positive_ids(cls, values: list[int] | None, field: str) -> list[int]:
+        normalized = values or []
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 1
+            for value in normalized
+        ):
+            cls._error("validation_error", f"{field} must contain positive integers.", False)
+        if len(set(normalized)) != len(normalized):
+            cls._error("validation_error", f"{field} must contain unique IDs.", False)
+        if len(normalized) > 10:
+            cls._error("validation_error", f"{field} cannot contain more than 10 IDs.", False)
+        return normalized
 
     @classmethod
     def _optional_text(

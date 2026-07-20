@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 4B3 complete; final coverage audit is next)
+Status: in progress (Phases 1A through 4B3 complete; Phase 5A is next)
 
 ## Goal
 
@@ -230,6 +230,31 @@ and no active bearer invitation remained. Meo pipeline `#322` deployed
 `5a81a9db`; gateway pipeline `#39` deployed `12a37cf`. Post-acceptance gateway
 logs contained no credential-pattern matches. Both GPT connector environments
 remained healthy and able to reach Meo.
+
+## Phase 5 — final coverage-audit closeout
+
+The post-4B route, OpenAPI, and frontend audit found normal-user workflows that
+the earlier risk-sequenced phases intentionally had not yet exposed. Complete
+these as separate checkpoints; do not treat route existence alone as a reason
+to expose browser plumbing or account-recovery surfaces.
+
+- [ ] Phase 5A: pet category discovery/assignment/creation, pet lifecycle status
+      and deletion, helper city-option creation, and self-locale update
+- [ ] Phase 5A: authority abilities, stable target/version enforcement,
+      duplicate handling, tests, deployment, and real-client smoke
+- [ ] Phase 5B: weight, vaccination, and medical-record deletion; vaccination
+      renewal; guarded vaccination/medical photo import and deletion
+- [ ] Phase 5B: authority abilities, idempotency/concurrency enforcement, tests,
+      deployment, and real-client smoke
+- [ ] Phase 5C: bounded private finance-receipt inspection/import/deletion with
+      an explicit MCP content contract, tests, deployment, and real-client smoke
+- [ ] Phase 5D: separately review Telegram notification/account linking and
+      disconnect semantics with dedicated narrow scopes or a durable product-
+      security exclusion; do not fold them into notification delivery scopes
+- [ ] Phase 5D: record durable exclusions for browser/device plumbing and
+      authentication, credential-minting, recovery, verification, and account-
+      destruction surfaces
+- [ ] Final route/OpenAPI/frontend audit has no unexplained normal-user gap
 
 ## Meo-side work (coordinate in meo-mai-moi)
 

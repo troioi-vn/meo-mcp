@@ -227,6 +227,21 @@ def create_app(settings: Settings | None = None) -> Starlette:
         return await call(api.list_pet_types)
 
     @server.tool(annotations=read_annotations)
+    async def list_pet_categories(pet_type_id: int, search: str | None = None) -> CallToolResult:
+        """List visible category options for one exact pet type."""
+        return await call(api.list_pet_categories, pet_type_id, search)
+
+    @server.tool(annotations=create_annotations)
+    async def create_pet_category(
+        name: str,
+        pet_type_id: int,
+        idempotency_key: str,
+        description: str | None = None,
+    ) -> CallToolResult:
+        """Create one pending category option after checking exact type/name duplicates."""
+        return await call(api.create_pet_category, name, pet_type_id, idempotency_key, description)
+
+    @server.tool(annotations=read_annotations)
     async def list_weights(pet_id: int, page: int = 1) -> CallToolResult:
         """List one pet's paginated weight history."""
         return await call(api.list_weights, pet_id, page)
@@ -291,6 +306,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         birth_month_year: str | None = None,
         age_months: int | None = None,
         description: str | None = None,
+        category_ids: list[int] | None = None,
         allow_duplicate: bool = False,
     ) -> CallToolResult:
         """Create a pet after exact duplicate checks; use one key per distinct intent."""
@@ -305,6 +321,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
             birth_month_year,
             age_months,
             description,
+            category_ids,
             allow_duplicate,
         )
 
@@ -320,6 +337,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         birth_month_year: str | None = None,
         age_months: int | None = None,
         description: str | None = None,
+        category_ids: list[int] | None = None,
     ) -> CallToolResult:
         """Update an explicit pet using the version returned by get_pet."""
         return await call(
@@ -334,6 +352,45 @@ def create_app(settings: Settings | None = None) -> Starlette:
             birth_month_year,
             age_months,
             description,
+            category_ids,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def update_pet_status(
+        pet_id: int,
+        status: Literal["active", "lost", "deceased"],
+        expected_name: str,
+        expected_status: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Change one exact pet's lifecycle status after matching its name, status, and version."""
+        return await call(
+            api.update_pet_status,
+            pet_id,
+            status,
+            expected_name,
+            expected_status,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_pet(
+        pet_id: int,
+        expected_name: str,
+        expected_status: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete one exact pet after matching its name, status, and version."""
+        return await call(
+            api.delete_pet,
+            pet_id,
+            expected_name,
+            expected_status,
+            base_version,
+            idempotency_key,
         )
 
     @server.tool(annotations=create_annotations)
@@ -912,6 +969,18 @@ def create_app(settings: Settings | None = None) -> Starlette:
     ) -> CallToolResult:
         """List countries or search cities for helper-profile and placement filtering."""
         return await call(api.list_helper_location_options, country, search)
+
+    @server.tool(annotations=create_annotations)
+    async def create_helper_city_option(
+        name: str,
+        country: str,
+        idempotency_key: str,
+        description: str | None = None,
+    ) -> CallToolResult:
+        """Create one helper city option after checking exact country/name duplicates."""
+        return await call(
+            api.create_helper_city_option, name, country, idempotency_key, description
+        )
 
     @server.tool(annotations=read_annotations)
     async def list_chats() -> CallToolResult:
@@ -1667,6 +1736,13 @@ def create_app(settings: Settings | None = None) -> Starlette:
     ) -> CallToolResult:
         """Change only the caller's display name from a versioned profile read."""
         return await call(api.update_my_profile_name, name, base_version, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def update_my_locale(
+        locale: str, base_version: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Change the caller's locale to one of Meo's current supported options."""
+        return await call(api.update_my_locale, locale, base_version, idempotency_key)
 
     @server.tool(annotations=update_annotations)
     async def upload_my_avatar_from_url(

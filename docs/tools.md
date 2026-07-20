@@ -159,6 +159,12 @@ part of the end-user tool surface.
 | `delete_owner_weight` | Live | Delete one exact owner-weight record after date/value preview | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/users/me/owner-weights/{owner_weight_id}`; absence verification | Delete | Critical; permanently removes personal health data |
 | `create_account_invitation` | Live | Create a generic or email-targeted onboarding invitation with explicit expiry | `invitations:read` + `invitations:write` | `invitations:read` + `invitations:write` (legacy PAT: `read` + `create`) | invitation preview; `POST /api/invitations`; summary verification | Create | Critical; emits bearer account-registration material and may send email |
 | `revoke_account_invitation` | Live | Revoke one exact pending onboarding invitation at a known version | `invitations:read` + `invitations:write` | `invitations:read` + `invitations:write` (legacy PAT: `read` + `delete`) | summary preview; `DELETE /api/invitations/{invitation_id}`; summary verification | Delete | Critical; invalidates distributed bearer material |
+| `list_pet_categories` | Proposed | Resolve visible breed/category options for one exact species | `pets:read` | `pets:read` (legacy PAT: `read`) | pet-type lookup; `GET /api/categories` | Read | Low; reference data plus caller-created pending options |
+| `create_pet_category` | Proposed | Create one caller-visible category option for an exact species after duplicate preview | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `create`) | category preview; `POST /api/categories`; category verification | Create | Moderate; creates moderated shared reference data |
+| `update_pet_status` | Proposed | Change one exact pet between active, lost, and deceased states from a versioned preview | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | pet preview; `PUT /api/pets/{pet_id}/status`; pet verification | Update | High; changes visibility and lifecycle presentation |
+| `delete_pet` | Proposed | Soft-delete one exact pet after name/status/version preview | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `delete`) | pet preview; `DELETE /api/pets/{pet_id}`; absence verification | Delete | Critical; removes the pet from normal user workflows |
+| `create_helper_city_option` | Proposed | Create one visible city option for helper/location workflows after duplicate preview | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `create`) | country/city preview; `POST /api/cities`; city verification | Create | Moderate; creates shared location reference data |
+| `update_my_locale` | Proposed | Change the caller's locale to one advertised supported value from a versioned profile read | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `update`) | profile/locale preview; `PUT /api/user/locale`; profile verification | Update | Moderate; changes language preference |
 | `create_group` | Live | Create a named group with an explicit initial pet set | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | duplicate preview; `POST /api/groups`; detail verification | Create | High; creates shared access boundary |
 | `update_group` | Live | Rename one exact group from its current version | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `update`) | detail preview; `PUT /api/groups/{group_id}`; detail verification | Update | High; shared identity change |
 | `delete_group` | Live | Permanently delete one exact group after membership/pet preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/groups/{group_id}`; absence verification | Delete | Critical; destroys group and sharing state |
@@ -834,6 +840,34 @@ Successful mutations verify the exact field/state change, stable returned ID,
 or target absence/revocation through the corresponding read scope. The three
 write scopes never authorize password changes, account deletion, notification
 actions, or another user's profile/weight/invitation data.
+
+## Phase 5A pet, reference-data, and locale closeout contract
+
+Phase 5A reuses the existing narrow pet, helper, and profile scope pairs. It
+does not introduce a cross-domain reference-data scope: pet categories require
+the pet pair, helper city creation requires the helper pair, and locale updates
+require the profile pair.
+
+- Pet category reads resolve species through the existing pet-type catalog and
+  return only visible category ID, name, slug, description, approval state, and
+  usage count. Category creation previews an exact normalized name within the
+  species, serializes the caller's creates, uses idempotency, and returns
+  `duplicate_candidate` for a distinct-key duplicate. Created categories remain
+  subject to Meo moderation. Pet create/update accepts only distinct category
+  IDs visible to the caller and belonging to the selected pet type; pet detail
+  exposes the same narrowed category shape for read-before-write.
+- Pet status changes require explicit pet ID, expected pet name/status, current
+  pet version, and one of `active | lost | deceased`. The special `deleted`
+  state is never accepted by the status tool. Pet deletion is separate and
+  requires the same exact target preview before Meo performs its soft-delete.
+  Both operations use authoritative idempotency and post-write verification.
+- Helper city creation accepts an advertised two-letter country, normalized
+  name, optional description, and unique idempotency key. It previews visible
+  cities, serializes caller creates, and translates a distinct-key duplicate to
+  `duplicate_candidate`; Meo remains authoritative for limits and moderation.
+- Locale update first reads the public supported-locale list and the caller's
+  profile version. It sends only one advertised locale, uses profile-write
+  authority and idempotency, and verifies the narrowed self profile afterward.
 
 ## Errors
 
