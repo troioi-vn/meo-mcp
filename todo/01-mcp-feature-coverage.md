@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 4B1 complete; Phase 4B2 is next)
+Status: in progress (Phases 1A through 4B2 complete; Phase 4B3 is next)
 
 ## Goal
 
@@ -168,7 +168,7 @@ deployed the tool surface and matching error translation.
 - [x] Phase 4A: Meo abilities, tests, deployment, and real-client smoke
 - [x] Phase 4B1: separately reviewed group and group-invitation writes, with a
       tested/deployed/accepted checkpoint before finance
-- [ ] Phase 4B2: separately reviewed finance/ledger and ledger-invitation writes
+- [x] Phase 4B2: separately reviewed finance/ledger and ledger-invitation writes
       with narrow scopes and audit-friendly semantics, followed by its own
       tested/deployed/accepted checkpoint
 - [ ] Phase 4B3: notification mark-read/preferences, safe profile and owner-
@@ -206,6 +206,19 @@ tests to avoid granting another user access during acceptance. Meo pipelines
 and `#35` deployed `e68a5d8` and `0acb59a`. No bearer invitation material,
 personal response content, or disposable artifact was retained. Both GPT
 connector environments remained healthy and able to reach Meo.
+
+Phase 4B2 development acceptance on 2026-07-21 used a finance-scoped OAuth
+discovery plus an authenticated Streamable HTTP smoke against the live
+gateway. Discovery advertised `finance:write` and listed all 143 tools,
+including the 26 finance write tools. A disposable ledger verified exact create
+replay, changed-key `duplicate_candidate`, stale-version rejection, rename,
+transaction create/replay/delete, invitation create/revoke, and cleanup via
+archive (starter configuration kept `can_delete` false). Member and recipient
+invitation consume paths remained covered by automated Meo tests. Meo pipeline
+`#321` deployed `8a03ff90`; gateway pipeline `#37` deployed `89d0360`. No bearer
+invitation material, personal financial payloads, or smoke tokens were
+retained. Both GPT connector environments remained healthy and able to reach
+Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
