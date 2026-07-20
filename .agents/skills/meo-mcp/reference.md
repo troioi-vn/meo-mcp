@@ -30,6 +30,8 @@ contributors can use local values derived from `.env.example`.
 | Habit writes: create/update/day/lifecycle/delete | explicit IDs, idempotency key, version for lifecycle/update/delete | verified habit/day or absence | `habits:read habits:write` | matching abilities | habit mutation and verification reads | create/update/delete | Moderate to high |
 | Pet photos: list/upload URL/set primary/delete | explicit pet/photo IDs, public HTTPS source for upload, idempotency key and pet version | narrowed photos and verified pet version | `pets:read pets:write` | `pets:read pet:write` | pet detail and photo mutations | read/create/update/delete | Moderate to high |
 | Microchips: list/detail/add/update/delete | explicit pet/record IDs, idempotency key, version for update/delete | narrowed record or verified absence | `microchips:read microchips:write` | matching abilities | microchip endpoints | read/create/update/delete | Moderate to high |
+| Pet-sharing reads: state/suggestions/invitations/preview | explicit pet ID or private invitation input | narrowed collaborators, candidates, or invitation preview | `sharing:read` | `sharing:read` | narrowed sharing and invitation endpoints | read-only | High |
+| Pet-sharing writes: collaborators/invitations/accept/decline/leave | exact stable targets and expectations, idempotency key, current version | verified sharing/invitation state or absence | `sharing:read sharing:write` | matching abilities | sharing mutation and verification endpoints | create/update/delete | High |
 
 Consult the canonical catalog for exact schemas and choose the narrowest
 non-empty scope subset needed. Write scopes are paired with the corresponding
@@ -136,6 +138,9 @@ Unset the temporary environment variable when finished.
 | `concurrency_conflict` | Update preflight | Re-read the explicit target and reconcile against its new version |
 | `post_write_verification_failed` | Write read-back | Treat the outcome as uncertain and read the stable target before retrying |
 | `source_url_rejected` / `source_image_invalid` | Photo-source validation | Choose a public HTTPS URL returning a supported image |
+| `relationship_mismatch` / `invitation_mismatch` | Sharing preflight | Stop and re-read the exact sharing or invitation target |
+| `invitation_inactive` | Invitation lifecycle | Obtain a current invitation; never retry or disclose the old bearer link |
+| `last_owner_conflict` | Sharing authority | Keep or assign another owner before retrying the relationship change |
 
 Tool failures use MCP `isError: true` and stable JSON fields `code`, `message`,
 `retryable`, and optional `upstream_status`. Read

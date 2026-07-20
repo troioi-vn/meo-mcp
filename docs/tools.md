@@ -11,6 +11,7 @@ part of the end-user tool surface.
 ## Lifecycle
 
 - **Live** means implemented and accepted on the development MCP endpoint.
+- **Implemented** means code and tests are complete but live acceptance is pending.
 
 ## Capability matrix
 
@@ -54,6 +55,18 @@ part of the end-user tool surface.
 | `add_microchip` | Live | Add one microchip identity record without finance side effects | `microchips:read` + `microchips:write` | `microchips:read` + `microchips:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/microchips`; verification `GET` | Create | High; creates durable identity data |
 | `update_microchip` | Live | Correct one explicit microchip record at a known version | `microchips:read` + `microchips:write` | `microchips:read` + `microchips:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/microchips/{microchip_id}`; `PUT` same path; verification `GET` | Update | High; overwrites durable identity data |
 | `delete_microchip` | Live | Delete one explicit microchip record while preserving linked finance data | `microchips:read` + `microchips:write` | `microchips:read` + `microchips:write` (legacy PAT: `read` + `delete`) | `GET /api/pets/{pet_id}/microchips/{microchip_id}`; `DELETE` same path with linked transaction kept; absence verification `GET` | Delete | High; permanently removes identity data |
+| `get_pet_sharing` | Implemented (Phase 2B) | Read active collaborators, the caller's permissions, and pet sharing version | `sharing:read` | `sharing:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/sharing` | Read | High; exposes named collaborators and access roles |
+| `list_pet_relationship_suggestions` | Implemented (Phase 2B) | List explicit known-user candidates eligible for direct sharing | `sharing:read` | `sharing:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/relationship-suggestions` | Read | High; exposes user IDs and names |
+| `list_pet_invitations` | Implemented (Phase 2B) | List pending share links for one owned pet | `sharing:read` | `sharing:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/invitations` | Read | High; returns bearer invitation URLs |
+| `preview_pet_invitation` | Implemented (Phase 2B) | Preview a supplied pet invitation without changing access | `sharing:read` | `sharing:read` (legacy PAT: `read`) | `POST /api/mcp/resource-invitations/preview` | Read | High; consumes a caller-supplied bearer link in the body |
+| `add_pet_collaborator` | Implemented (Phase 2B) | Grant a selected suggested user an explicit pet role | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `create`) | sharing/suggestion reads; `POST /api/pets/{pet_id}/users`; verification sharing read | Create | High; grants pet access, including ownership |
+| `change_pet_collaborator_role` | Implemented (Phase 2B) | Change one explicit collaborator role at a known relationship version | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `update`) | sharing read; `PUT /api/pets/{pet_id}/users/{user_id}`; verification read | Update | High; changes access or ownership |
+| `remove_pet_collaborator` | Implemented (Phase 2B) | End one explicit collaborator's access at a known relationship version | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `delete`) | sharing read; `DELETE /api/pets/{pet_id}/users/{user_id}`; verification read | Delete | High; revokes access or ownership |
+| `create_pet_invitation` | Implemented (Phase 2B) | Create a role-specific bearer share link for an explicit owned pet/version | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `create`) | sharing read; `POST /api/pets/{pet_id}/invitations`; verification list | Create | High; anyone holding the link may gain access |
+| `revoke_pet_invitation` | Implemented (Phase 2B) | Revoke one explicit pending pet invitation at its known version | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `delete`) | invitation list; `DELETE /api/pets/{pet_id}/invitations/{invitation_id}`; verification list | Delete | High; invalidates a distributed bearer link |
+| `accept_pet_invitation` | Implemented (Phase 2B) | Accept a freshly previewed pet invitation whose expected pet/role match | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `create`) | body-token preview; `POST /api/mcp/resource-invitations/accept`; verification sharing read | Create | High; grants the caller durable pet access |
+| `decline_pet_invitation` | Implemented (Phase 2B) | Decline a freshly previewed pet invitation whose expected pet/role match | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `update`) | body-token preview; `POST /api/mcp/resource-invitations/decline`; verification preview | Update | High; permanently consumes the invitation |
+| `leave_shared_pet` | Implemented (Phase 2B) | End all caller relationships with an explicit pet after a versioned read | `sharing:read` + `sharing:write` | `sharing:read` + `sharing:write` (legacy PAT: `read` + `delete`) | sharing read; `POST /api/pets/{pet_id}/leave`; post-write permission verification | Delete | High; removes the caller's own access and may revoke issued invites |
 
 ## Scope model
 
@@ -67,10 +80,12 @@ part of the end-user tool surface.
 | `habits:write` | Create, edit, archive, restore, delete, and record entries for habits the user may manage | `habits:write` | Habit mutations; always paired with `habits:read` by these tools |
 | `microchips:read` | View microchip identity records for pets the user may access | `microchips:read` | Microchip list/detail |
 | `microchips:write` | Add, correct, and delete microchip records for pets the user may manage | `microchips:write` | Microchip mutations; always paired with `microchips:read` by these tools |
+| `sharing:read` | View pet collaborators, roles, suggestions, and invitation previews/links | `sharing:read` | Pet sharing reads |
+| `sharing:write` | Grant, change, revoke, accept, decline, or leave pet access | `sharing:write` | Pet sharing mutations; always paired with `sharing:read` by these tools |
 
-Scopes are independently requestable non-empty subsets. The default dynamic
-registration scope set includes both so general clients can discover the whole
-read surface. Every tool checks its own requirement. Meo endpoints accept the
+Scopes are independently requestable non-empty subsets. Dynamic registration
+defaults to the full advertised set, while authorization can request a narrow
+subset. Every tool checks its own requirement. Meo endpoints accept the
 domain ability on MCP-issued tokens while retaining the generic `read` ability
 for existing user-created PATs.
 
@@ -100,6 +115,11 @@ the update annotations. Deletes remain `idempotentHint: true` because the
 stable key replays the first terminal response; they are also
 `destructiveHint: true`. Photo source fetching is open-world and does not make
 the other write scopes interchangeable.
+
+Phase 2B read tools use the shared read annotations. Every sharing mutation is
+open-world, destructive, and idempotent: even a grant is destructive because
+it changes another person's durable access. The hint is backed by the stable
+idempotency key and authoritative Meo checks, not confirmation wording.
 
 ## Shared schemas
 
@@ -368,6 +388,77 @@ The gateway then reads the target back, or verifies absence after a delete.
   `{ "microchip_id", "deleted": true, "verified": true }` after absence is
   confirmed.
 
+## Phase 2B pet sharing tools
+
+Sharing uses dedicated `sharing:read` and `sharing:write` scopes. The narrowed
+sharing endpoint—not the general pet profile endpoint—is the authority for
+collaborators and caller permissions. Outputs omit email addresses, historic
+relationships, creator IDs, and arbitrary upstream fields.
+
+- `PetSharing` contains `pet_id`, `pet_name`, nullable `version`, caller
+  permission booleans, caller `relationship_types`, and active relationships
+  narrowed to `relationship_id`, `user_id`, `user_name`, `relationship_type`,
+  and nullable `version`.
+- `Invitation` contains `invitation_id`, `relationship_type`, `status`,
+  `expires_at`, nullable `version`, and `share_url`. The URL is a bearer
+  credential and appears only in owner-manager results.
+- `InvitationPreview` contains only `status`, `expires_at`, `is_valid`,
+  `is_authenticated`, `is_self_invitation`, `inviter_name`, `pet_name`,
+  `relationship_type`, and nullable `version`. It never echoes the supplied
+  token or link.
+- `get_pet_sharing` takes positive `pet_id` and returns
+  `{ "sharing": PetSharing }`.
+- `list_pet_relationship_suggestions` takes positive `pet_id` and returns
+  candidates narrowed to stable `user_id` and `user_name`.
+- `list_pet_invitations` takes positive `pet_id` and returns pending
+  `{ "invitations": Invitation[] }`.
+- `preview_pet_invitation` takes `invitation`, either the exact configured Meo
+  invitation URL or its 64-character alphanumeric token, and returns
+  `{ "invitation": InvitationPreview }`. The gateway validates the value and
+  redacts it from logs and errors.
+
+Every mutation requires an `idempotency_key` under the shared write contract.
+Grant roles are limited to `owner | editor | viewer`; Meo remains authoritative
+for ownership, self-sharing, duplicate, and last-owner rules.
+
+- `add_pet_collaborator` requires explicit `pet_id`, a `user_id` present in a
+  fresh suggestion read, `relationship_type`, the `sharing_base_version`,
+  and the key. It verifies the exact active relationship afterward.
+- `change_pet_collaborator_role` requires explicit pet/user IDs,
+  `relationship_type`, `sharing_base_version`, and the key. It first
+  resolves that exact active relationship and verifies its new role afterward.
+- `remove_pet_collaborator` requires explicit pet/user IDs,
+  `sharing_base_version`, and the key. It verifies that relationship is
+  absent afterward. An exact retry may replay the prior terminal result.
+- `create_pet_invitation` requires explicit `pet_id`, `relationship_type`,
+  `sharing_base_version`, and the key. It returns the verified pending invitation
+  including its share URL.
+- `revoke_pet_invitation` requires explicit pet/invitation IDs,
+  `invitation_base_version`, and the key. It verifies the invitation is absent
+  from the pending list; an exact retry may replay the prior result.
+- `accept_pet_invitation` and `decline_pet_invitation` require `invitation`,
+  exact `expected_pet_name`, exact `expected_relationship_type`,
+  `invitation_base_version`, and the key. Immediately before mutation the
+  gateway previews the invitation and rejects unless the expected pet and role
+  match. It passes the version to Meo, which atomically distinguishes an exact
+  idempotency replay from a stale request. Accept verifies the caller's new relationship; decline
+  verifies that a subsequent preview is inactive.
+- `leave_shared_pet` requires explicit `pet_id`, `sharing_base_version`, a non-empty
+  exact `expected_relationship_types` set from the sharing read, and the key.
+  The gateway rejects a mismatch before mutation. Meo enforces last-owner
+  protection; success is verified by loss of the caller's active relationship
+  or access.
+
+Fresh-read version mismatches are also resolved by Meo rather than rejected
+before the write request, because the first successful attempt changes the
+version and an exact retry must still reach Meo's idempotency middleware.
+
+Invitation tokens and URLs are never placed in application, HTTP-client, or
+structured-error logs. Do not pass them in query strings or return them from
+preview, accept, or decline. The gateway permits exact idempotency replay after
+a target becomes inaccessible or disappears by allowing Meo's idempotency
+middleware to resolve the stable key before a fresh-target read is required.
+
 ## Errors
 
 Every tool can return `scope_required`, `authorization_inactive`, or the common
@@ -386,6 +477,10 @@ Every tool can return `scope_required`, `authorization_inactive`, or the common
 | `source_image_invalid` | no | A photo source has an unsupported MIME type, invalid declared size, or no usable body |
 | `source_image_too_large` | no | A streamed photo source exceeded the 10 MiB gateway limit |
 | `source_fetch_failed` | yes | A validated public photo source could not be fetched safely |
+| `relationship_mismatch` | no | A fresh sharing read does not match the caller's exact expected role set |
+| `invitation_mismatch` | no | A fresh preview does not match the caller's exact expected pet or role |
+| `invitation_inactive` | no | The invitation is expired, revoked, declined, accepted, or otherwise unusable |
+| `last_owner_conflict` | no | The requested relationship change would leave the pet without an owner |
 
 Upstream `403` and `404` remain `upstream_forbidden` and
 `upstream_not_found`. No upstream response body is forwarded.

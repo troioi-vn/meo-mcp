@@ -6,11 +6,11 @@ tools that delegate to the Meo Laravel API with a narrowly scoped Sanctum token.
 Meo remains the product and authorization authority; this repository is a thin
 adapter, not a second implementation of its domain rules.
 
-The gateway exposes pet, core-health, habit, photo, and microchip workflows over
-stateless Streamable HTTP. Independent read/write scopes for pets, health,
-habits, and microchips delegate narrow domain abilities. Pet photos intentionally
-reuse the pet scopes. Existing user-created generic PAT abilities remain
-compatible upstream.
+The gateway exposes pet, core-health, habit, photo, microchip, and pet-sharing
+workflows over stateless Streamable HTTP. Independent read/write scopes for
+pets, health, habits, microchips, and sharing delegate narrow domain abilities.
+Pet photos intentionally reuse the pet scopes. Existing user-created generic
+PAT abilities remain compatible upstream.
 
 ## Start here
 

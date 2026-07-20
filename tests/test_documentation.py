@@ -42,6 +42,8 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
         "health:write",
         "habits:write",
         "microchips:write",
+        "sharing:read",
+        "sharing:write",
     ]
     assert "`list_pets`" in catalog
     assert "`pets:read`" in catalog
@@ -54,6 +56,8 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     assert "`create_habit`" in catalog
     assert "`upload_pet_photo_from_url`" in catalog
     assert "`delete_microchip`" in catalog
+    assert "`get_pet_sharing`" in catalog
+    assert "`sharing:write`" in catalog
 
 
 def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:

@@ -178,6 +178,18 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "add_microchip",
         "update_microchip",
         "delete_microchip",
+        "get_pet_sharing",
+        "list_pet_relationship_suggestions",
+        "list_pet_invitations",
+        "preview_pet_invitation",
+        "add_pet_collaborator",
+        "change_pet_collaborator_role",
+        "remove_pet_collaborator",
+        "create_pet_invitation",
+        "revoke_pet_invitation",
+        "accept_pet_invitation",
+        "decline_pet_invitation",
+        "leave_shared_pet",
     ]
     assert tools.json()["result"]["tools"][0]["annotations"]["readOnlyHint"] is True
     by_name = {tool["name"]: tool for tool in tools.json()["result"]["tools"]}

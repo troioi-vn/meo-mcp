@@ -102,6 +102,13 @@ Tool errors replace upstream bodies with gateway-owned messages and stable
 codes. This prevents internal or user-specific upstream detail from crossing
 the MCP boundary. See [errors.md](errors.md).
 
+Pet invitation URLs contain a bearer capability. MCP preview, accept, and
+decline calls extract and validate the token locally, send it to dedicated Meo
+endpoints in a JSON body, and never echo it in tool output. The gateway also
+raises the HTTP transport libraries' log threshold so a future debug setting
+cannot place request URLs in normal application logs. Meo records route
+templates rather than concrete tokenized paths in its structured API log.
+
 ## Configuration and documentation boundary
 
 Public source may contain environment variable names, placeholders, public

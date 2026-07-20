@@ -100,6 +100,10 @@ class GuardMiddleware(BaseHTTPMiddleware):
 
 def create_app(settings: Settings | None = None) -> Starlette:
     settings = settings or get_settings()
+    # httpx logs complete request URLs at INFO. Keep transport diagnostics at
+    # WARNING so sensitive URL material cannot enter normal application logs.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     structlog.configure(
         processors=[redact_log_event, structlog.processors.JSONRenderer()],
         wrapper_class=structlog.make_filtering_bound_logger(
@@ -115,7 +119,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         "Meo Mai Moi",
         instructions=(
             "Read and safely update Meo Mai Moi pets, health history, habits, photos, "
-            "and microchips. "
+            "microchips, and pet sharing. "
             "Resolve names to stable IDs, read targets before updates, preserve the returned "
             "version, and reuse an idempotency key only for an exact write retry."
         ),
@@ -665,6 +669,162 @@ def create_app(settings: Settings | None = None) -> Starlette:
             pet_id,
             microchip_id,
             base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=read_annotations)
+    async def get_pet_sharing(pet_id: int) -> CallToolResult:
+        """Read active collaborators, caller permissions, and sharing version."""
+        return await call(api.get_pet_sharing, pet_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_pet_relationship_suggestions(pet_id: int) -> CallToolResult:
+        """List stable known-user candidates eligible for direct pet sharing."""
+        return await call(api.list_pet_relationship_suggestions, pet_id)
+
+    @server.tool(annotations=read_annotations)
+    async def list_pet_invitations(pet_id: int) -> CallToolResult:
+        """List pending bearer invitation links for one explicitly owned pet."""
+        return await call(api.list_pet_invitations, pet_id)
+
+    @server.tool(annotations=read_annotations)
+    async def preview_pet_invitation(invitation: str) -> CallToolResult:
+        """Preview a supplied invitation token or link without echoing it."""
+        return await call(api.preview_pet_invitation, invitation)
+
+    @server.tool(annotations=update_annotations)
+    async def add_pet_collaborator(
+        pet_id: int,
+        user_id: int,
+        relationship_type: Literal["owner", "editor", "viewer"],
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Grant a freshly suggested stable user a role and verify it."""
+        return await call(
+            api.add_pet_collaborator,
+            pet_id,
+            user_id,
+            relationship_type,
+            sharing_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def change_pet_collaborator_role(
+        pet_id: int,
+        user_id: int,
+        relationship_type: Literal["owner", "editor", "viewer"],
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Change an explicit collaborator role at a known sharing version."""
+        return await call(
+            api.change_pet_collaborator_role,
+            pet_id,
+            user_id,
+            relationship_type,
+            sharing_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def remove_pet_collaborator(
+        pet_id: int,
+        user_id: int,
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Remove one explicit collaborator and verify access is absent."""
+        return await call(
+            api.remove_pet_collaborator,
+            pet_id,
+            user_id,
+            sharing_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def create_pet_invitation(
+        pet_id: int,
+        relationship_type: Literal["owner", "editor", "viewer"],
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Create and verify a role-specific bearer invitation link."""
+        return await call(
+            api.create_pet_invitation,
+            pet_id,
+            relationship_type,
+            sharing_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def revoke_pet_invitation(
+        pet_id: int,
+        invitation_id: int,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Revoke one explicit pending invitation and verify its absence."""
+        return await call(
+            api.revoke_pet_invitation,
+            pet_id,
+            invitation_id,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def accept_pet_invitation(
+        invitation: str,
+        expected_pet_name: str,
+        expected_relationship_type: Literal["owner", "editor", "viewer"],
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Accept after fresh pet/role preview and authority-side version check."""
+        return await call(
+            api.accept_pet_invitation,
+            invitation,
+            expected_pet_name,
+            expected_relationship_type,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def decline_pet_invitation(
+        invitation: str,
+        expected_pet_name: str,
+        expected_relationship_type: Literal["owner", "editor", "viewer"],
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Decline after fresh pet/role preview and authority-side version check."""
+        return await call(
+            api.decline_pet_invitation,
+            invitation,
+            expected_pet_name,
+            expected_relationship_type,
+            invitation_base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def leave_shared_pet(
+        pet_id: int,
+        sharing_base_version: str,
+        expected_relationship_types: list[str],
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Leave only when the fresh relationship set exactly matches expectation."""
+        return await call(
+            api.leave_shared_pet,
+            pet_id,
+            sharing_base_version,
+            expected_relationship_types,
             idempotency_key,
         )
 

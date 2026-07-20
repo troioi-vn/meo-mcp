@@ -9,7 +9,7 @@
 
 Do not configure a bearer token manually. Point the client at
 `<MCP_BASE_URL>/mcp`; OAuth discovery supplies the authorization server and the
-currently advertised pet/health read and write scopes.
+currently advertised narrow read and write scopes.
 
 ## Generic flow
 
@@ -63,6 +63,12 @@ Keep the read-only command above for ordinary inspection. Request
 `microchips:read,microchips:write`; pet-photo workflows use the pet pair. Write
 tools require stable IDs, idempotency keys, and—for updates, lifecycle actions,
 and deletes—the version returned by the matching read tool.
+
+Pet sharing pairs `sharing:read,sharing:write`. These high-impact tools require
+fresh sharing or invitation state plus exact expected pet, role, user, or
+relationship targets. Invitation preview/accept/decline accepts either the
+64-character token or the exact Meo HTTPS invitation URL; clients must treat
+both as credentials and must not log or paste them into conversation history.
 
 Alternatively, open **Settings → MCP servers**, add a Streamable HTTP server,
 then select **Authenticate** and restart the app or IDE extension when prompted.

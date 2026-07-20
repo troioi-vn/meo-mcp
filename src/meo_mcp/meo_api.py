@@ -29,6 +29,9 @@ MEDICAL_RECORD_TYPES = {
 }
 HABIT_VALUE_TYPES = {"yes_no", "integer_scale"}
 HABIT_SUMMARY_MODES = {"average_scored_pets", "average_all_pets", "sum"}
+SHARING_ROLES = {"owner", "editor", "viewer"}
+RELATIONSHIP_TYPES = SHARING_ROLES | {"foster", "sitter"}
+INVITATION_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9]{64}$")
 PHOTO_MAX_BYTES = 10 * 1024 * 1024
 PHOTO_REDIRECT_LIMIT = 3
 PHOTO_MIME_EXTENSIONS = {
@@ -949,6 +952,334 @@ class MeoApi:
         await self._verify_absent(self.get_microchip, pet_id, microchip_id)
         return {"microchip_id": microchip_id, "deleted": True, "verified": True}
 
+    async def get_pet_sharing(self, pet_id: int) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        delegated = await self._delegated_token("sharing:read")
+        item = self._object(await self._get(delegated, f"/api/pets/{pet_id}/sharing"))
+        return {"sharing": self._pet_sharing(item)}
+
+    async def list_pet_relationship_suggestions(self, pet_id: int) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        delegated = await self._delegated_token("sharing:read")
+        payload = await self._get(delegated, f"/api/pets/{pet_id}/relationship-suggestions")
+        return {
+            "suggestions": [
+                {"user_id": item.get("id"), "user_name": item.get("name")}
+                for item in self._items(payload)
+            ]
+        }
+
+    async def list_pet_invitations(self, pet_id: int) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        delegated = await self._delegated_token("sharing:read")
+        payload = await self._get(delegated, f"/api/pets/{pet_id}/invitations")
+        return {"invitations": [self._invitation(item) for item in self._items(payload)]}
+
+    async def preview_pet_invitation(self, invitation: str) -> dict[str, Any]:
+        token = self._invitation_token(invitation)
+        delegated = await self._delegated_token("sharing:read")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/mcp/resource-invitations/preview",
+            json_data={"token": token},
+        )
+        return {"invitation": self._invitation_preview(self._object(payload))}
+
+    async def add_pet_collaborator(
+        self,
+        pet_id: int,
+        user_id: int,
+        relationship_type: str,
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(user_id, "user_id")
+        role = self._sharing_role(relationship_type)
+        version = self._version(sharing_base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_pet_sharing(pet_id))["sharing"]
+        suggestions = (await self.list_pet_relationship_suggestions(pet_id))["suggestions"]
+        already_granted = self._find_relationship(current, user_id, role) is not None
+        if not already_granted and user_id not in {item.get("user_id") for item in suggestions}:
+            self._error(
+                "validation_error",
+                "user_id is not present in the fresh relationship suggestions.",
+                False,
+            )
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/pets/{pet_id}/users",
+            json_data={
+                "user_id": user_id,
+                "relationship_type": role,
+                "base_version": version,
+            },
+            idempotency_key=key,
+            expected_statuses={200, 201},
+        )
+        verified = await self._verify(self.get_pet_sharing, pet_id)
+        relationship = self._find_relationship(verified["sharing"], user_id, role)
+        if relationship is None:
+            self._verification_error("The granted collaborator role could not be verified.")
+        return {"relationship": relationship, **verified, "verified": True}
+
+    async def change_pet_collaborator_role(
+        self,
+        pet_id: int,
+        user_id: int,
+        relationship_type: str,
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(user_id, "user_id")
+        role = self._sharing_role(relationship_type)
+        version = self._version(sharing_base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_pet_sharing(pet_id))["sharing"]
+        if not any(item.get("user_id") == user_id for item in current["relationships"]):
+            self._error("validation_error", "user_id is not an active collaborator.", False)
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/pets/{pet_id}/users/{user_id}",
+            json_data={"relationship_type": role, "base_version": version},
+            idempotency_key=key,
+        )
+        verified = await self._verify(self.get_pet_sharing, pet_id)
+        relationship = self._find_relationship(verified["sharing"], user_id, role)
+        if relationship is None:
+            self._verification_error("The collaborator role change could not be verified.")
+        return {"relationship": relationship, **verified, "verified": True}
+
+    async def remove_pet_collaborator(
+        self,
+        pet_id: int,
+        user_id: int,
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(user_id, "user_id")
+        version = self._version(sharing_base_version)
+        key = self._idempotency_key(idempotency_key)
+        try:
+            current = (await self.get_pet_sharing(pet_id))["sharing"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") not in {"upstream_forbidden", "upstream_not_found"}:
+                raise
+        else:
+            self._require_version_available(current)
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/users/{user_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = await self._verify(self.get_pet_sharing, pet_id)
+        if any(item.get("user_id") == user_id for item in verified["sharing"]["relationships"]):
+            self._verification_error("The removed collaborator is still active.")
+        return {"user_id": user_id, **verified, "removed": True, "verified": True}
+
+    async def create_pet_invitation(
+        self,
+        pet_id: int,
+        relationship_type: str,
+        sharing_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        role = self._sharing_role(relationship_type)
+        version = self._version(sharing_base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_pet_sharing(pet_id))["sharing"]
+        self._require_version_available(current)
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/pets/{pet_id}/invitations",
+                json_data={"relationship_type": role, "base_version": version},
+                idempotency_key=key,
+                expected_statuses={200, 201},
+            )
+        )
+        raw = created.get("invitation")
+        if not isinstance(raw, dict):
+            self._verification_error("Meo did not return a stable invitation.")
+        invitation = self._invitation(raw)
+        invitations = (await self._verify(self.list_pet_invitations, pet_id))["invitations"]
+        verified = next(
+            (item for item in invitations if item["invitation_id"] == invitation["invitation_id"]),
+            None,
+        )
+        if verified is None:
+            self._verification_error("The created invitation could not be verified.")
+        return {"invitation": verified, "verified": True}
+
+    async def revoke_pet_invitation(
+        self,
+        pet_id: int,
+        invitation_id: int,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(invitation_id, "invitation_id")
+        version = self._version(invitation_base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.list_pet_invitations(pet_id))["invitations"]
+        invitation = next(
+            (item for item in current if item["invitation_id"] == invitation_id), None
+        )
+        if invitation is not None:
+            self._require_version_available(invitation)
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/invitations/{invitation_id}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        verified = (await self._verify(self.list_pet_invitations, pet_id))["invitations"]
+        if any(item["invitation_id"] == invitation_id for item in verified):
+            self._verification_error("The revoked invitation is still pending.")
+        return {"invitation_id": invitation_id, "revoked": True, "verified": True}
+
+    async def accept_pet_invitation(
+        self,
+        invitation: str,
+        expected_pet_name: str,
+        expected_relationship_type: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._consume_pet_invitation(
+            invitation,
+            expected_pet_name,
+            expected_relationship_type,
+            invitation_base_version,
+            idempotency_key,
+            "accept",
+        )
+
+    async def decline_pet_invitation(
+        self,
+        invitation: str,
+        expected_pet_name: str,
+        expected_relationship_type: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._consume_pet_invitation(
+            invitation,
+            expected_pet_name,
+            expected_relationship_type,
+            invitation_base_version,
+            idempotency_key,
+            "decline",
+        )
+
+    async def leave_shared_pet(
+        self,
+        pet_id: int,
+        sharing_base_version: str,
+        expected_relationship_types: list[str],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        version = self._version(sharing_base_version)
+        key = self._idempotency_key(idempotency_key)
+        expected = self._relationship_type_set(expected_relationship_types)
+        try:
+            current = (await self.get_pet_sharing(pet_id))["sharing"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") not in {"upstream_forbidden", "upstream_not_found"}:
+                raise
+        else:
+            if set(current["relationship_types"]) != expected:
+                self._error(
+                    "relationship_mismatch",
+                    "The caller's fresh relationship set does not match the expected set.",
+                    False,
+                )
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/pets/{pet_id}/leave",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        try:
+            after = await self.get_pet_sharing(pet_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") in {"upstream_forbidden", "upstream_not_found"}:
+                return {"pet_id": pet_id, "left": True, "verified": True}
+            raise self._tool_error(
+                "post_write_verification_failed",
+                "Meo accepted the leave but access loss could not be verified.",
+                True,
+            ) from exc
+        if after["sharing"]["viewer_permissions"]["has_active_relationship"]:
+            self._verification_error("The caller still has an active pet relationship.")
+        return {"pet_id": pet_id, "left": True, "verified": True}
+
+    async def _consume_pet_invitation(
+        self,
+        invitation: str,
+        expected_pet_name: str,
+        expected_relationship_type: str,
+        invitation_base_version: str,
+        idempotency_key: str,
+        action: str,
+    ) -> dict[str, Any]:
+        token = self._invitation_token(invitation)
+        expected_name = self._required_text(expected_pet_name, "expected_pet_name", 255)
+        expected_role = self._sharing_role(expected_relationship_type)
+        version = self._version(invitation_base_version)
+        key = self._idempotency_key(idempotency_key)
+        preview = (await self.preview_pet_invitation(token))["invitation"]
+        if preview["pet_name"] != expected_name or preview["relationship_type"] != expected_role:
+            self._error(
+                "invitation_mismatch",
+                "The fresh invitation preview does not match the expected pet and role.",
+                False,
+            )
+        delegated = await self._delegated_token("sharing:read", "sharing:write")
+        result = await self._request(
+            delegated,
+            "POST",
+            f"/api/mcp/resource-invitations/{action}",
+            json_data={"token": token, "base_version": version},
+            idempotency_key=key,
+            expected_statuses={200, 204},
+        )
+        if action == "accept":
+            item = self._object(result)
+            pet_id = item.get("pet_id")
+            self._positive(pet_id, "pet_id")
+            sharing = await self._verify(self.get_pet_sharing, pet_id)
+            if expected_role not in sharing["sharing"]["relationship_types"]:
+                self._verification_error("The accepted collaborator role could not be verified.")
+            return {"sharing": sharing["sharing"], "accepted": True, "verified": True}
+        after = (await self.preview_pet_invitation(token))["invitation"]
+        if after["is_valid"]:
+            self._verification_error("The declined invitation is still valid.")
+        return {"declined": True, "verified": True}
+
     async def _habit_lifecycle(
         self,
         habit_id: int,
@@ -1247,6 +1578,14 @@ class MeoApi:
             except ValueError:
                 conflict = None
             data = conflict.get("data") if isinstance(conflict, dict) else None
+            conflict_code = data.get("code") if isinstance(data, dict) else None
+            if conflict_code == "last_owner_conflict":
+                self._error(
+                    "last_owner_conflict",
+                    "The change would leave the pet without an owner.",
+                    False,
+                    409,
+                )
             existing_pet_ids = data.get("existing_pet_ids") if isinstance(data, dict) else None
             if isinstance(existing_pet_ids, list) and all(
                 isinstance(value, int) and not isinstance(value, bool) and value > 0
@@ -1275,6 +1614,13 @@ class MeoApi:
         if response.status_code in errors:
             code, message, retryable = errors[response.status_code]
             self._error(code, message, retryable, response.status_code)
+        if response.status_code == 410:
+            self._error(
+                "invitation_inactive",
+                "The invitation is no longer active.",
+                False,
+                410,
+            )
         if response.status_code >= 500:
             self._error(
                 "upstream_server_error",
@@ -1552,6 +1898,83 @@ class MeoApi:
             "version": item.get("updated_at", item.get("version")),
             "has_linked_transaction": bool(item.get("health_finance_link_exists")),
         }
+
+    @classmethod
+    def _pet_sharing(cls, item: dict[str, Any]) -> dict[str, Any]:
+        permissions = (
+            item.get("viewer_permissions")
+            if isinstance(item.get("viewer_permissions"), dict)
+            else {}
+        )
+        relationships = item.get("relationships")
+        relationship_types = item.get("relationship_types")
+        if not isinstance(relationships, list) or not isinstance(relationship_types, list):
+            cls._error("upstream_malformed", "Meo returned malformed sharing data.", True)
+        return {
+            "pet_id": item.get("pet_id"),
+            "pet_name": item.get("pet_name"),
+            "version": item.get("version"),
+            "viewer_permissions": {
+                "can_manage_people": bool(permissions.get("can_manage_people")),
+                "is_owner": bool(permissions.get("is_owner")),
+                "has_active_relationship": bool(permissions.get("has_active_relationship")),
+            },
+            "relationship_types": [role for role in relationship_types if isinstance(role, str)],
+            "relationships": [
+                {
+                    key: relationship.get(key)
+                    for key in (
+                        "relationship_id",
+                        "user_id",
+                        "user_name",
+                        "relationship_type",
+                        "version",
+                    )
+                }
+                for relationship in relationships
+                if isinstance(relationship, dict)
+            ],
+        }
+
+    @staticmethod
+    def _invitation(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "invitation_id": item.get("id", item.get("invitation_id")),
+            "relationship_type": item.get("relationship_type"),
+            "status": item.get("status"),
+            "expires_at": item.get("expires_at"),
+            "version": item.get("updated_at", item.get("version")),
+            "share_url": item.get("invitation_url", item.get("share_url")),
+        }
+
+    @staticmethod
+    def _invitation_preview(item: dict[str, Any]) -> dict[str, Any]:
+        inviter = item.get("inviter") if isinstance(item.get("inviter"), dict) else {}
+        target = item.get("target") if isinstance(item.get("target"), dict) else {}
+        return {
+            "status": item.get("status"),
+            "expires_at": item.get("expires_at"),
+            "is_valid": bool(item.get("is_valid")),
+            "is_authenticated": bool(item.get("is_authenticated")),
+            "is_self_invitation": bool(item.get("is_self_invitation")),
+            "inviter_name": inviter.get("name"),
+            "pet_name": target.get("name"),
+            "relationship_type": target.get("role"),
+            "version": item.get("updated_at", item.get("version")),
+        }
+
+    @staticmethod
+    def _find_relationship(
+        sharing: dict[str, Any], user_id: int, role: str
+    ) -> dict[str, Any] | None:
+        return next(
+            (
+                item
+                for item in sharing.get("relationships", [])
+                if item.get("user_id") == user_id and item.get("relationship_type") == role
+            ),
+            None,
+        )
 
     @staticmethod
     def _next_birthday(pet: dict[str, Any]) -> date | None:
@@ -1832,6 +2255,69 @@ class MeoApi:
         if len(value) < 10:
             cls._error("validation_error", "chip_number must be 10-20 characters.", False)
         return value
+
+    @classmethod
+    def _sharing_role(cls, value: str) -> str:
+        value = cls._required_text(value, "relationship_type", 32).lower()
+        if value not in SHARING_ROLES:
+            cls._error(
+                "validation_error",
+                "relationship_type must be owner, editor, or viewer.",
+                False,
+            )
+        return value
+
+    @classmethod
+    def _relationship_type_set(cls, values: list[str]) -> set[str]:
+        if not isinstance(values, list) or not values:
+            cls._error(
+                "validation_error",
+                "expected_relationship_types must contain at least one role.",
+                False,
+            )
+        normalized = {
+            cls._required_text(value, "expected_relationship_types", 32).lower() for value in values
+        }
+        if len(normalized) != len(values) or not normalized <= RELATIONSHIP_TYPES:
+            cls._error(
+                "validation_error",
+                "expected_relationship_types must be unique supported roles.",
+                False,
+            )
+        return normalized
+
+    def _invitation_token(self, value: str) -> str:
+        value = self._required_text(value, "invitation", 2048)
+        if INVITATION_TOKEN_PATTERN.fullmatch(value):
+            return value
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            segments = [segment for segment in parsed.path.split("/") if segment]
+            if (
+                parsed.scheme == "https"
+                and parsed.hostname == self.settings.meo_base_url.host
+                and parsed.port in {None, 443}
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.query
+                and not parsed.fragment
+                and len(segments) == 2
+                and segments[0] == "invite"
+                and INVITATION_TOKEN_PATTERN.fullmatch(segments[1])
+            ):
+                return segments[1]
+        self._error(
+            "validation_error",
+            "invitation must be a 64-character token or an HTTPS /invite/token URL.",
+            False,
+        )
+
+    @classmethod
+    def _verification_error(cls, message: str) -> None:
+        cls._error("post_write_verification_failed", message, True)
 
     @classmethod
     def _weight_value(cls, value: float) -> float:

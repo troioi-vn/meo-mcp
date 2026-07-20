@@ -53,6 +53,8 @@ ALLOWED_SCOPES = [
     "health:write",
     "habits:write",
     "microchips:write",
+    "sharing:read",
+    "sharing:write",
 ]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 

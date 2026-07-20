@@ -95,6 +95,10 @@ Current tool error codes:
 | `source_image_invalid` | no | — | Supply a non-empty JPEG, PNG, WebP, or GIF response |
 | `source_image_too_large` | no | — | Supply an image no larger than 10 MiB |
 | `source_fetch_failed` | yes | — | Retry the validated source later or choose another public source |
+| `relationship_mismatch` | no | — | Re-read sharing state; the caller's expected current roles no longer match |
+| `invitation_mismatch` | no | — | Stop; the fresh invitation preview does not match the expected pet or role |
+| `invitation_inactive` | no | `410` | Obtain a current invitation; this bearer link is no longer usable |
+| `last_owner_conflict` | no | `409` | Keep or assign another owner before changing/removing/leaving this relationship |
 | `upstream_unavailable` | yes | — | Retry later; no HTTP response was received |
 | `upstream_unauthorized` | no | `401` | Reconnect; delegated authorization was rejected |
 | `upstream_forbidden` | no | `403` | Stop or change the request; Meo denied access |

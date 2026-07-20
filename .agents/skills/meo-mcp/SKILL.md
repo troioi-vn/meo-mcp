@@ -1,6 +1,6 @@
 ---
 name: meo-mcp
-description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet, health, habit, photo, and microchip tools with narrow read/write scopes, diagnosing structured failures, deploying safely, and adding semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, habits:read, microchips:read, pets:write, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
+description: "Guides agents through operating and developing the Meo MCP gateway: connecting Streamable HTTP clients, completing OAuth, smoke-testing pet, health, habit, photo, microchip, and pet-sharing tools with narrow read/write scopes, diagnosing structured failures, deploying safely, and adding semantic tools. Use when work mentions Meo MCP, meo-mcp, Streamable HTTP, OAuth, list_pets, pets:read, habits:read, microchips:read, sharing:read, pets:write, gateway smoke tests, or extending the MCP tool surface. Do not use for end-user pet-management workflows; use the separate meo-mai-moi skill instead."
 ---
 
 # Meo MCP gateway
@@ -49,6 +49,11 @@ workflows and product-domain concepts. Do not copy that knowledge here.
 
 Prefer read-only acceptance. Do not widen OAuth scopes or create a write grant
 merely to make a smoke test pass.
+
+Treat pet-sharing writes as high impact. Read the narrowed sharing state or
+invitation preview immediately before mutation, require exact expected targets,
+and verify the result. Invitation links are credentials: pass them only through
+the tool input, never reproduce them in chat, logs, screenshots, or reports.
 
 ## Diagnose safely
 
