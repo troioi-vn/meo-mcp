@@ -5,8 +5,8 @@ NGINX development vhost. Public service names and topology required by those
 artifacts may appear here. Private inventory belongs in the operator runbook.
 
 Never publish IP addresses, SSH targets or usernames, checkout paths, database
-or role names, allowlisted identities, CI/repository IDs, secret-manager paths,
-or secret values. Maintainers can locate the private runbook through their
+or role names, CI/repository IDs, secret-manager paths, or secret values.
+Maintainers can locate the private runbook through their
 workstation-level agent instructions; public contributors must not need it for
 local development or architecture comprehension.
 

@@ -96,7 +96,7 @@ may guide a model, but it is never an authorization or safety control.
 
 This repository documents reusable architecture, public endpoints where useful,
 and the deployment mechanics required to understand committed artifacts. Live
-inventory—IPs, SSH identities, checkout paths, database identities, allowlisted
-users, CI/repository IDs, and secret-manager locations—belongs only in the
-private operator runbook. Public contributors do not need that runbook to build,
-test, or understand this service.
+inventory—IPs, SSH identities, checkout paths, database identities,
+CI/repository IDs, and secret-manager locations—belongs only in the private
+operator runbook. Public contributors do not need that runbook to build, test,
+or understand this service.

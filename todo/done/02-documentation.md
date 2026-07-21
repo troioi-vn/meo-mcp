@@ -37,7 +37,7 @@ repo.
       DNS-rebinding protection) at a public-safe level
 - [x] Explain the public/private boundary: public endpoints and deploy mechanics may
       be documented; IPs, SSH identities, checkout paths, database identities,
-      allowlisted users, CI IDs, and secret locations stay in the operator runbook
+      CI IDs, and secret locations stay in the operator runbook
 
 ### Tool catalog
 
@@ -62,7 +62,7 @@ repo.
       plan to `todo/done/`
 - [x] No API keys, encryption keys, or other secret values in any public doc
 - [x] Run a repository leak scan for workstation paths, IPs, SSH targets, database
-      identities, allowlisted emails, CI IDs, and secret-manager paths
+      identities, CI IDs, and secret-manager paths
 
 ## Definition of done
 

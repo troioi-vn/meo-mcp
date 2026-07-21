@@ -112,8 +112,8 @@ additive schema; do not run destructive database downgrades.
 
 - Never commit `.env` or real credentials. Use `.env.example` only for names and
   placeholder shapes.
-- Keep IPs, SSH identities, checkout paths, database identities, allowlisted
-  users, CI/repository IDs, and secret-manager locations in the private operator
+- Keep IPs, SSH identities, checkout paths, database identities,
+  CI/repository IDs, and secret-manager locations in the private operator
   runbook only.
 - Use `dev` for routine gateway work. Do not create or deploy production without
   the explicit production checkpoint required by repository policy.

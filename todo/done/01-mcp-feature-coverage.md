@@ -306,7 +306,7 @@ to reach Meo.
 
 When scopes expand beyond `pets:read`:
 
-- [x] MCP connector allowlist / ability grants for new scopes
+- [x] MCP scope catalog / ability grants for new scopes
 - [x] Consent UI (`/mcp-connect`) copy lists new scopes clearly
 - [x] Exchange issues Sanctum tokens with matching abilities
 - [x] Docs in meo-mai-moi if API integration contract changes

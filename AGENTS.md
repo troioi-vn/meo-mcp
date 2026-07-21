@@ -65,8 +65,8 @@ src/meo_mcp/
 8. **Public vs private docs.** Reusable product/engineering truth lives here (`docs/`,
    `AGENTS.md`). Public endpoints and required deployment topology may appear in
    source-controlled deploy artifacts. IPs, SSH identities, checkout paths,
-   database identities, allowlisted users, CI IDs, and secret locations belong
-   only in the private operator runbook.
+   database identities, CI IDs, and secret locations belong only in the private
+   operator runbook.
 
 ---
 

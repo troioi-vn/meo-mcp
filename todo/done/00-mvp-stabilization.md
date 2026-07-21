@@ -38,11 +38,11 @@ and real-client test gaps from the launch acceptance plan.
 ### Meo integration and real clients
 
 - [x] In `meo-mai-moi`, cover allow, deny, unauthenticated, unverified, banned,
-      non-allowlisted, malformed, expired, and replayed consent flows
+      malformed, expired, and replayed consent flows
 - [x] Verify existing GPT connector behavior remains unchanged
 - [x] Run OAuth plus `list_pets` through MCP Inspector
 - [x] Run OAuth plus `list_pets` through Codex CLI using the configured resource
-- [x] Verify a non-allowlisted development account cannot authorize
+- [x] Verify unverified and banned development accounts cannot authorize
 
 ### Developer and deployment baseline
 
@@ -71,5 +71,5 @@ and real-client test gaps from the launch acceptance plan.
 
 Public tests and docs may contain example domains and intentionally public service
 URLs. They must not contain IPs, SSH identities, checkout paths, database identities,
-allowlisted emails, CI IDs, secret-manager paths, or credentials. Live verification
-details stay in the private operator runbook.
+CI IDs, secret-manager paths, or credentials. Live verification details stay in
+the private operator runbook.

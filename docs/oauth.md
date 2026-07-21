@@ -62,9 +62,8 @@ Detailed behavior:
    exact against registered metadata.
 3. The gateway persists a ten-minute authorization request and redirects the
    browser to Meo's `/mcp-connect` page with an HMAC-signed, expiring reference.
-4. Meo displays the client name and requested scopes. Environment policy decides
-   whether the signed-in account may approve; current development policy also
-   requires a verified, non-banned, eligible account. Denial is single-use too.
+4. Meo displays the client name and requested scopes. Any verified, non-banned
+   signed-in account may approve. Denial is single-use too.
 5. Approval creates a Sanctum token with only the abilities mapped from those
    scopes and a five-minute, single-use exchange code. The exchange endpoints
    are server-to-server and authenticated with the configured connector key.

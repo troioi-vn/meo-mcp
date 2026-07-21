@@ -114,9 +114,8 @@ templates rather than concrete tokenized paths in its structured API log.
 Public source may contain environment variable names, placeholders, public
 service URLs, and topology required to understand committed deployment files.
 It must not contain secret values or private live inventory: IPs, SSH identities,
-checkout paths, database identities, allowlisted users, CI/repository IDs, or
-secret-manager locations. Those facts belong only in the private operator
-runbook.
+checkout paths, database identities, CI/repository IDs, or secret-manager
+locations. Those facts belong only in the private operator runbook.
 
 Use [.env.example](../.env.example) as a names-and-shapes template. A server
 `.env` is operator-managed and must never enter Git. Local tests inject isolated

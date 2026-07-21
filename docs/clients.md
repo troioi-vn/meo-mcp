@@ -3,8 +3,7 @@
 ## What you need
 
 - The environment's public base URL, written below as `<MCP_BASE_URL>`.
-- A Meo account that satisfies that environment's consent policy. Development
-  currently requires a verified, non-banned, eligible account.
+- A verified, non-banned Meo account.
 - An MCP client supporting remote Streamable HTTP and OAuth.
 
 Do not configure a bearer token manually. Point the client at

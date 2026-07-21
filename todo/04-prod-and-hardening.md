@@ -8,9 +8,9 @@ Separate ops and safety work from feature coverage so write tools and prod
 exposure do not land accidentally. Provision production when ready; harden auth,
 observability, and destructive-tool safeguards.
 
-IPs, SSH identities, checkouts, database identities, allowlisted users, CI IDs,
-and secret-store inventory belong only in the private operator runbook. Public
-service names and reusable deployment mechanics may remain in this repository.
+IPs, SSH identities, checkouts, database identities, CI IDs, and secret-store
+inventory belong only in the private operator runbook. Public service names and
+reusable deployment mechanics may remain in this repository.
 
 ## Current state
 
@@ -26,7 +26,7 @@ service names and reusable deployment mechanics may remain in this repository.
   policies cannot share counters or reset windows.
 - Development environment only (see the private operator runbook).
 - `main` has no deploy workflow; production is not provisioned.
-- Connector / allowlist policy is managed with Meo + the private operator runbook.
+- Meo permits verified, non-banned accounts to authorize MCP clients.
 
 ## Work items
 
@@ -41,9 +41,9 @@ service names and reusable deployment mechanics may remain in this repository.
 - [ ] Health checks: loopback + public `/health`
 - [ ] Rollback procedure (prior SHA; additive migrations only)
 
-### Auth and allowlists
+### Auth and client registration
 
-- [ ] Confirm email / user allowlist policy for prod vs dev (record privately)
+- [x] Require a verified, non-banned Meo account for MCP consent
 - [ ] Review dynamic client registration posture for prod
 - [ ] Scope catalog review: every granted scope maps to shipped tools
 - [ ] Refresh token family / revocation smoke tests before prod cutover
