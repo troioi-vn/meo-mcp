@@ -5366,7 +5366,7 @@ class MeoApi:
         return {
             "id": item.get("id"),
             "weight_kg": item.get("weight_kg", item.get("weight")),
-            "record_date": item.get("record_date", item.get("date")),
+            "record_date": MeoApi._date_only(item.get("record_date", item.get("date"))),
             "version": item.get("updated_at", item.get("version")),
         }
 
@@ -5391,6 +5391,8 @@ class MeoApi:
             if photo is not None
             else None
         )
+        normalized["administered_at"] = MeoApi._date_only(normalized["administered_at"])
+        normalized["due_at"] = MeoApi._date_only(normalized["due_at"])
         normalized["version"] = normalized.pop("updated_at", None)
         return normalized
 
@@ -5415,8 +5417,15 @@ class MeoApi:
                 if isinstance(photo, dict)
             ],
         }
+        normalized["record_date"] = MeoApi._date_only(normalized["record_date"])
         normalized["version"] = normalized.pop("updated_at", None)
         return normalized
+
+    @staticmethod
+    def _date_only(value: Any) -> Any:
+        if isinstance(value, str) and len(value) >= 10 and value[4] == "-" and value[7] == "-":
+            return value[:10]
+        return value
 
     @staticmethod
     def _habit(item: dict[str, Any]) -> dict[str, Any]:

@@ -73,7 +73,7 @@ def _weight(version="w1"):
         "data": {
             "id": 21,
             "weight_kg": "4.20",
-            "record_date": "2026-07-21",
+            "record_date": "2026-07-21T00:00:00.000000Z",
             "updated_at": version,
         }
     }
@@ -92,8 +92,8 @@ def _vaccination(
         "data": {
             "id": vaccination_id,
             "vaccine_name": name,
-            "administered_at": administered,
-            "due_at": None,
+            "administered_at": f"{administered}T00:00:00.000000Z",
+            "due_at": "2027-07-01T00:00:00.000000Z",
             "notes": None,
             "completed_at": completed,
             "photo_url": photo["url"] if photo else None,
@@ -108,7 +108,7 @@ def _medical(*, version="m1", photos=None):
         "data": {
             "id": 41,
             "record_type": "checkup",
-            "record_date": "2026-07-10",
+            "record_date": "2026-07-10T00:00:00.000000Z",
             "description": None,
             "vet_name": None,
             "photos": photos or [],
