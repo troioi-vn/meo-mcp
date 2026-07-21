@@ -20,6 +20,10 @@ service names and reusable deployment mechanics may remain in this repository.
 - Comprehensive fresh-client development smoke testing covers reads and reversible
   writes across every shipped domain. Multi-party and irreversible workflows remain
   explicit production acceptance items.
+- Live regression acceptance confirms numeric notification IDs, single-notification
+  writes, placement creation across an explicit `pet: null` create projection, and
+  exact cleanup. Meo write throttles are route-scoped so unrelated hourly and minute
+  policies cannot share counters or reset windows.
 - Development environment only (see the private operator runbook).
 - `main` has no deploy workflow; production is not provisioned.
 - Connector / allowlist policy is managed with Meo + the private operator runbook.
@@ -60,7 +64,8 @@ service names and reusable deployment mechanics may remain in this repository.
 - [x] Require enforceable safeguards for high-impact actions: explicit targets,
       narrow scopes, idempotency where possible, read/preview before write, and
       post-write verification; descriptions alone are insufficient
-- [ ] Rate limits / body size already partially guarded — revisit limits under write load
+- [x] Rate limits / body size guards reviewed under development write load; Meo
+      route-specific write counters are isolated by route and authenticated actor
 - [ ] Do not enable prod write tools without Meo ability + consent UI parity
 
 ### Docs sync
