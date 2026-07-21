@@ -81,7 +81,7 @@ async def test_create_placement_request_is_replay_keyed_and_verified(tmp_path) -
     }
     with respx.mock:
         created = respx.post("https://app.example.com/api/placement-requests").mock(
-            return_value=httpx.Response(201, json={"data": request})
+            return_value=httpx.Response(201, json={"data": {**request, "pet": None}})
         )
         respx.get("https://app.example.com/api/placement-requests/7").mock(
             return_value=httpx.Response(200, json={"data": request})

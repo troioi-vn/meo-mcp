@@ -3901,7 +3901,11 @@ class MeoApi:
             expected_statuses={201},
         )
         created = self._placement_request(self._object(payload))
-        if created.get("pet", {}).get("pet_name") not in {None, expected_pet_name}:
+        created_pet = created.get("pet")
+        if isinstance(created_pet, dict) and created_pet.get("pet_name") not in {
+            None,
+            expected_pet_name,
+        }:
             self._verification_error("The created placement request pet did not match.")
         request_id = created.get("placement_request_id")
         self._positive(request_id, "placement_request_id")
@@ -6464,8 +6468,15 @@ class MeoApi:
     @classmethod
     def _notification(cls, item: dict[str, Any]) -> dict[str, Any]:
         actions = item.get("actions") if isinstance(item.get("actions"), list) else []
+        notification_id = item.get("id", item.get("notification_id"))
+        if (
+            isinstance(notification_id, str)
+            and notification_id.isascii()
+            and notification_id.isdigit()
+        ):
+            notification_id = int(notification_id)
         return {
-            "notification_id": item.get("id", item.get("notification_id")),
+            "notification_id": notification_id,
             "level": item.get("level"),
             "title": item.get("title"),
             "body": item.get("body"),

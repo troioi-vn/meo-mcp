@@ -85,7 +85,7 @@ def _inbox(count: int, *, read_at=None):
         "data": {
             "bell_notifications": [
                 {
-                    "id": 7,
+                    "id": "7",
                     "title": "Update",
                     "read_at": read_at,
                     "actions": [{"key": "unapprove", "label": "Admin only"}],
@@ -186,6 +186,7 @@ async def test_notification_receipts_and_preferences_enforce_expected_state(tmp_
             )
 
     assert marked["structuredContent"]["verified"] is True
+    assert marked["structuredContent"]["notification_id"] == 7
     assert marked_all["structuredContent"]["marked_read_count"] == 2
     assert changed["structuredContent"]["preference"]["email_enabled"] is False
     assert single.calls[0].request.headers["Idempotency-Key"] == "notification-one"
