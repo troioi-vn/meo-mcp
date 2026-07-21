@@ -16,9 +16,7 @@ the private operator runbook only.
 
 ## Index
 
-| Plan | Focus |
-|------|--------|
-| [04-prod-and-hardening.md](04-prod-and-hardening.md) | Prod cutover, auth policy, observability, write safety |
+No active roadmap plans remain.
 
 ## Execution order
 
@@ -42,3 +40,4 @@ verify the development client flow before continuing.
 | [02-documentation.md](done/02-documentation.md) | Self-contained architecture, OAuth, security, errors, clients, and tool catalog |
 | [03-agent-skill.md](done/03-agent-skill.md) | Cross-client connect, smoke, diagnosis, deploy, and tool-development workflow |
 | [01-mcp-feature-coverage.md](done/01-mcp-feature-coverage.md) | Full end-user MCP tool/scope coverage and durable exclusions |
+| [04-prod-and-hardening.md](done/04-prod-and-hardening.md) | Production cutover, auth policy, observability, write safety, and rollback acceptance |
