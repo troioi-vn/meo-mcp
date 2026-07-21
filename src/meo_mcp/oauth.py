@@ -72,7 +72,10 @@ ALLOWED_SCOPES = [
     "invitations:read",
     "invitations:write",
 ]
-DEFAULT_SCOPES = ["pets:read"]
+# DCR clients that omit `scope` receive the full catalog. Cursor registers that
+# way, then mirrors the WWW-Authenticate challenge into /authorize; a pets:read
+# registration locked those clients to an invalid_scope error redirect.
+DEFAULT_SCOPES = list(ALLOWED_SCOPES)
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 
