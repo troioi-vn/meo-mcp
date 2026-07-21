@@ -6,12 +6,12 @@ tools that delegate to the Meo Laravel API with a narrowly scoped Sanctum token.
 Meo remains the product and authorization authority; this repository is a thin
 adapter, not a second implementation of its domain rules.
 
-The gateway exposes pet, core-health, habit, photo, microchip, pet-sharing,
-placement, helper-profile, and messaging workflows over stateless Streamable
-HTTP. Independent domain scopes delegate narrow abilities; Phase 3 includes
-placement, helper-profile, and placement-context messaging reads and guarded
-writes. Pet photos intentionally reuse the pet scopes. Existing user-created
-generic PAT abilities remain compatible upstream.
+The gateway exposes 172 semantic tools across pets, health, habits, photos,
+microchips, sharing, placement, helpers, messaging, groups, finance,
+notifications, profile, locale, owner weight, and invitations over stateless
+Streamable HTTP. Independent domain scopes delegate narrow abilities. Pet
+photos intentionally reuse pet scopes, while high-impact writes require stable
+targets, fresh reads, concurrency checks, and post-write verification.
 
 ## Start here
 
@@ -23,7 +23,7 @@ generic PAT abilities remain compatible upstream.
 | [Errors](docs/errors.md) | HTTP, OAuth, and MCP tool error contracts |
 | [Connect a client](docs/clients.md) | Generic setup plus Codex, Cursor, and MCP Inspector examples |
 | [Tool catalog](docs/tools.md) | Canonical scope, upstream endpoint, schema, annotation, and risk matrix |
-| [Deployment](docs/deployment.md) | Public-safe local and development release mechanics |
+| [Deployment](docs/deployment.md) | Public-safe local, development, and production release mechanics |
 
 Repository-specific agent rules are in [AGENTS.md](AGENTS.md), and active work
 is sequenced in [todo/README.md](todo/README.md). Use the reusable

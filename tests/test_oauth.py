@@ -95,6 +95,17 @@ async def test_dcr_accepts_only_public_clients_and_persists_no_secret(tmp_path) 
         registration = response.json()
         assert registration.get("client_secret") is None
 
+        default_registration = await client.post(
+            "/register",
+            json={
+                "redirect_uris": ["http://127.0.0.1/default-callback"],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+                "client_name": "Default-scope client",
+            },
+        )
+
         confidential = await client.post(
             "/register",
             json={
@@ -119,6 +130,8 @@ async def test_dcr_accepts_only_public_clients_and_persists_no_secret(tmp_path) 
         )
 
     assert confidential.status_code == 400
+    assert default_registration.status_code == 201
+    assert default_registration.json()["scope"] == "pets:read"
     assert confidential.json()["error"] == "invalid_client_metadata"
     assert invalid_scope.status_code == 400
     assert invalid_scope.json()["error"] == "invalid_client_metadata"
