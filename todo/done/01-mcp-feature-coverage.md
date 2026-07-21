@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 5C complete; Phase 5D is next)
+Status: done
 
 ## Goal
 
@@ -178,7 +178,7 @@ deployed the tool surface and matching error translation.
       notification action unless the registered handler is an end-user action
 - [x] Phase 4B: all five write scopes, Meo abilities, tests, deployments, and
       real-client smokes complete
-- [ ] Coverage checklist against OpenAPI tags: every in-scope domain has at least
+- [x] Coverage checklist against OpenAPI tags: every in-scope domain has at least
       agent-useful read coverage; writes where product wants agent action
 
 Phase 4A development acceptance on 2026-07-20 used a fresh twenty-one-scope
@@ -248,13 +248,13 @@ to expose browser plumbing or account-recovery surfaces.
       deployment, and real-client smoke
 - [x] Phase 5C: bounded private finance-receipt inspection/import/deletion with
       an explicit MCP content contract, tests, deployment, and real-client smoke
-- [ ] Phase 5D: separately review Telegram notification/account linking and
+- [x] Phase 5D: separately review Telegram notification/account linking and
       disconnect semantics with dedicated narrow scopes or a durable product-
       security exclusion; do not fold them into notification delivery scopes
-- [ ] Phase 5D: record durable exclusions for browser/device plumbing and
+- [x] Phase 5D: record durable exclusions for browser/device plumbing and
       authentication, credential-minting, recovery, verification, and account-
       destruction surfaces
-- [ ] Final route/OpenAPI/frontend audit has no unexplained normal-user gap
+- [x] Final route/OpenAPI/frontend audit has no unexplained normal-user gap
 
 Phase 5A acceptance on 2026-07-21 deployed Meo commit `0ca23f5c` in pipeline
 `#323` and gateway commit `7fd5fcb` in pipeline `#41`. A fresh six-scope
@@ -287,6 +287,20 @@ size and digest metadata, receipt deletion replay, and complete transaction
 cleanup. Post-acceptance gateway and authority log scans found no fatal or
 credential-pattern matches. Both GPT connector environments remained healthy
 and able to reach Meo.
+
+Phase 5D final acceptance on 2026-07-21 deployed Meo commit `9dc34065` in
+pipeline `#326` and gateway commit `0ebc210` in pipeline `#48`. The route,
+OpenAPI, frontend, and legacy-connector audit found no unexplained agent-useful
+normal-user gap. Telegram identity linking and the remaining authentication,
+credential, recovery, verification, account-destruction, browser-device,
+administrative, compatibility, telemetry, and pre-account surfaces now have
+durable product/security exclusions. Meo rejects bearer PATs on authenticated
+session-only identity and device routes while preserving normal SPA flows. A
+fresh narrow OAuth client discovered all 172 tools, confirmed excluded tools
+were absent, and completed `list_pets`; only its aggregate count was retained.
+Post-acceptance authority and gateway log scans found no fatal or credential-
+pattern matches, and both GPT connector environments remained healthy and able
+to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
