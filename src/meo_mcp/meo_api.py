@@ -516,6 +516,49 @@ class MeoApi:
         verified = await self._verify(self.get_weight, pet_id, weight_id)
         return {"weight": verified["weight"], "verified": True}
 
+    async def delete_weight(
+        self,
+        pet_id: int,
+        weight_id: int,
+        expected_weight_kg: float,
+        expected_record_date: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(weight_id, "weight_id")
+        expected_weight = self._weight_value(expected_weight_kg)
+        try:
+            current = (await self.get_weight(pet_id, weight_id))["weight"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            self._require_version_available(current)
+            try:
+                current_weight = float(current.get("weight_kg"))
+            except (TypeError, ValueError):
+                self._error("upstream_malformed", "Meo returned a malformed weight value.", True)
+            if (
+                current_weight != expected_weight
+                or current.get("record_date") != expected_record_date.isoformat()
+            ):
+                self._error("target_mismatch", "The weight value or date does not match.", False)
+        delegated = await self._delegated_token("health:read", "health:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/weights/{weight_id}",
+            json_data={
+                "expected_weight_kg": expected_weight,
+                "expected_record_date": expected_record_date.isoformat(),
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        await self._verify_absent(self.get_weight, pet_id, weight_id)
+        return {"weight_id": weight_id, "deleted": True, "verified": True}
+
     async def add_vaccination(
         self,
         pet_id: int,
@@ -590,6 +633,189 @@ class MeoApi:
         verified = await self._verify(self.get_vaccination, pet_id, vaccination_id)
         return {"vaccination": verified["vaccination"], "verified": True}
 
+    async def delete_vaccination(
+        self,
+        pet_id: int,
+        vaccination_id: int,
+        expected_vaccine_name: str,
+        expected_administered_at: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(vaccination_id, "vaccination_id")
+        expected_name = self._required_text(expected_vaccine_name, "expected_vaccine_name", 255)
+        try:
+            current = (await self.get_vaccination(pet_id, vaccination_id))["vaccination"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            self._require_version_available(current)
+            if (
+                current.get("vaccine_name") != expected_name
+                or current.get("administered_at") != expected_administered_at.isoformat()
+            ):
+                self._error(
+                    "target_mismatch", "The vaccination name or date does not match.", False
+                )
+        delegated = await self._delegated_token("health:read", "health:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/vaccinations/{vaccination_id}",
+            params={"linked_transaction": "keep"},
+            json_data={
+                "expected_vaccine_name": expected_name,
+                "expected_administered_at": expected_administered_at.isoformat(),
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        await self._verify_absent(self.get_vaccination, pet_id, vaccination_id)
+        return {"vaccination_id": vaccination_id, "deleted": True, "verified": True}
+
+    async def renew_vaccination(
+        self,
+        pet_id: int,
+        vaccination_id: int,
+        expected_vaccine_name: str,
+        expected_administered_at: date,
+        vaccine_name: str,
+        administered_at: date,
+        base_version: str,
+        idempotency_key: str,
+        due_at: date | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(vaccination_id, "vaccination_id")
+        expected_name = self._required_text(expected_vaccine_name, "expected_vaccine_name", 255)
+        current = (await self.get_vaccination(pet_id, vaccination_id))["vaccination"]
+        self._require_version_available(current)
+        if (
+            current.get("vaccine_name") != expected_name
+            or current.get("administered_at") != expected_administered_at.isoformat()
+        ):
+            self._error("target_mismatch", "The vaccination target does not match.", False)
+        upstream: dict[str, Any] = {
+            "vaccine_name": self._required_text(vaccine_name, "vaccine_name", 255),
+            "administered_at": administered_at.isoformat(),
+            "expected_vaccine_name": expected_name,
+            "expected_administered_at": expected_administered_at.isoformat(),
+            "base_version": self._version(base_version),
+        }
+        if due_at is not None:
+            if due_at < administered_at:
+                self._error("validation_error", "due_at must not precede administered_at.", False)
+            upstream["due_at"] = due_at.isoformat()
+        notes = self._optional_text(notes, "notes", 1000)
+        if notes is not None:
+            upstream["notes"] = notes
+        delegated = await self._delegated_token("health:read", "health:write")
+        created = await self._request(
+            delegated,
+            "POST",
+            f"/api/pets/{pet_id}/vaccinations/{vaccination_id}/renew",
+            json_data=upstream,
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        renewed_id = self._response_id(created)
+        old, renewed = await asyncio.gather(
+            self._verify(self.get_vaccination, pet_id, vaccination_id),
+            self._verify(self.get_vaccination, pet_id, renewed_id),
+        )
+        if old["vaccination"].get("completed_at") is None:
+            self._verification_error("The prior vaccination was not completed.")
+        if (
+            renewed["vaccination"].get("vaccine_name") != upstream["vaccine_name"]
+            or renewed["vaccination"].get("administered_at") != upstream["administered_at"]
+        ):
+            self._verification_error("The renewed vaccination could not be verified.")
+        return {
+            "completed_vaccination": old["vaccination"],
+            "renewed_vaccination": renewed["vaccination"],
+            "verified": True,
+        }
+
+    async def upload_vaccination_photo_from_url(
+        self,
+        pet_id: int,
+        vaccination_id: int,
+        expected_photo_id: int | None,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(vaccination_id, "vaccination_id")
+        if expected_photo_id is not None:
+            self._positive(expected_photo_id, "expected_photo_id")
+        current = (await self.get_vaccination(pet_id, vaccination_id))["vaccination"]
+        self._require_version_available(current)
+        # A mismatch is still sent to Meo so its idempotency middleware can
+        # return an exact prior result. A distinct-key stale attempt reaches
+        # the controller and is rejected by the authoritative expectation.
+        filename, content, content_type = await self._fetch_public_image(source_url)
+        delegated = await self._delegated_token("health:read", "health:write")
+        created = self._object(
+            await self._request(
+                delegated,
+                "POST",
+                f"/api/pets/{pet_id}/vaccinations/{vaccination_id}/photo",
+                form_data={
+                    "expected_photo_id": ""
+                    if expected_photo_id is None
+                    else str(expected_photo_id),
+                    "base_version": self._version(base_version),
+                },
+                files={"photo": (filename, content, content_type)},
+                idempotency_key=self._idempotency_key(idempotency_key),
+            )
+        )
+        created_vaccination = self._vaccination(created)
+        photo = created_vaccination.get("photo")
+        if not isinstance(photo, dict) or not isinstance(photo.get("id"), int):
+            self._verification_error("Meo did not return the vaccination photo ID.")
+        verified = (await self._verify(self.get_vaccination, pet_id, vaccination_id))["vaccination"]
+        if not isinstance(verified.get("photo"), dict) or verified["photo"].get("id") != photo.get(
+            "id"
+        ):
+            self._verification_error("The vaccination photo could not be verified.")
+        return {"vaccination": verified, "photo": verified["photo"], "verified": True}
+
+    async def delete_vaccination_photo(
+        self,
+        pet_id: int,
+        vaccination_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(photo_id, "photo_id")
+        current = (await self.get_vaccination(pet_id, vaccination_id))["vaccination"]
+        self._require_version_available(current)
+        photo = current.get("photo")
+        if isinstance(photo, dict) and photo.get("id") != photo_id:
+            self._error("target_mismatch", "The vaccination photo does not match.", False)
+        delegated = await self._delegated_token("health:read", "health:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/vaccinations/{vaccination_id}/photo",
+            json_data={
+                "expected_photo_id": photo_id,
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        verified = (await self._verify(self.get_vaccination, pet_id, vaccination_id))["vaccination"]
+        if verified.get("photo") is not None:
+            self._verification_error("The vaccination photo deletion could not be verified.")
+        return {"vaccination": verified, "photo_id": photo_id, "deleted": True, "verified": True}
+
     async def add_medical_record(
         self,
         pet_id: int,
@@ -663,6 +889,112 @@ class MeoApi:
         )
         verified = await self._verify(self.get_medical_record, pet_id, record_id)
         return {"medical_record": verified["medical_record"], "verified": True}
+
+    async def delete_medical_record(
+        self,
+        pet_id: int,
+        record_id: int,
+        expected_record_type: str,
+        expected_record_date: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        self._positive(record_id, "record_id")
+        expected_type = self._record_type(expected_record_type)
+        try:
+            current = (await self.get_medical_record(pet_id, record_id))["medical_record"]
+        except MeoApiError as exc:
+            if exc.payload.get("code") != "upstream_not_found":
+                raise
+        else:
+            self._require_version_available(current)
+            if (
+                current.get("record_type") != expected_type
+                or current.get("record_date") != expected_record_date.isoformat()
+            ):
+                self._error(
+                    "target_mismatch", "The medical record type or date does not match.", False
+                )
+        delegated = await self._delegated_token("health:read", "health:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/medical-records/{record_id}",
+            params={"linked_transaction": "keep"},
+            json_data={
+                "expected_record_type": expected_type,
+                "expected_record_date": expected_record_date.isoformat(),
+                "base_version": self._version(base_version),
+            },
+            idempotency_key=self._idempotency_key(idempotency_key),
+        )
+        await self._verify_absent(self.get_medical_record, pet_id, record_id)
+        return {"record_id": record_id, "deleted": True, "verified": True}
+
+    async def upload_medical_record_photo_from_url(
+        self,
+        pet_id: int,
+        record_id: int,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        current = (await self.get_medical_record(pet_id, record_id))["medical_record"]
+        self._require_version_available(current)
+        filename, content, content_type = await self._fetch_public_image(source_url)
+        delegated = await self._delegated_token("health:read", "health:write")
+        created = self._medical_record(
+            self._object(
+                await self._request(
+                    delegated,
+                    "POST",
+                    f"/api/pets/{pet_id}/medical-records/{record_id}/photos",
+                    form_data={"base_version": self._version(base_version)},
+                    files={"photo": (filename, content, content_type)},
+                    idempotency_key=self._idempotency_key(idempotency_key),
+                )
+            )
+        )
+        created_photos = [photo for photo in created["photos"] if isinstance(photo.get("id"), int)]
+        if not created_photos:
+            self._verification_error("Meo did not return the medical photo ID.")
+        photo = max(created_photos, key=lambda item: item["id"])
+        verified = (await self._verify(self.get_medical_record, pet_id, record_id))[
+            "medical_record"
+        ]
+        if photo["id"] not in {item.get("id") for item in verified["photos"]}:
+            self._verification_error("The medical record photo could not be verified.")
+        return {"medical_record": verified, "photo": photo, "verified": True}
+
+    async def delete_medical_record_photo(
+        self,
+        pet_id: int,
+        record_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(photo_id, "photo_id")
+        current = (await self.get_medical_record(pet_id, record_id))["medical_record"]
+        self._require_version_available(current)
+        # An absent target is allowed through for an exact idempotent replay;
+        # a different key remains a normal authoritative 404.
+        delegated = await self._delegated_token("health:read", "health:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/pets/{pet_id}/medical-records/{record_id}/photos/{photo_id}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        verified = (await self._verify(self.get_medical_record, pet_id, record_id))[
+            "medical_record"
+        ]
+        if photo_id in {photo.get("id") for photo in verified["photos"]}:
+            self._verification_error("The medical record photo deletion could not be verified.")
+        return {"medical_record": verified, "photo_id": photo_id, "deleted": True, "verified": True}
 
     async def list_habits(self) -> dict[str, Any]:
         delegated = await self._delegated_token("habits:read")
@@ -5040,6 +5372,7 @@ class MeoApi:
 
     @staticmethod
     def _vaccination(item: dict[str, Any]) -> dict[str, Any]:
+        photo = item.get("photo") if isinstance(item.get("photo"), dict) else None
         normalized = {
             key: item.get(key)
             for key in (
@@ -5053,6 +5386,11 @@ class MeoApi:
                 "updated_at",
             )
         }
+        normalized["photo"] = (
+            {key: photo.get(key) for key in ("id", "url", "thumb_url", "medium_url")}
+            if photo is not None
+            else None
+        )
         normalized["version"] = normalized.pop("updated_at", None)
         return normalized
 

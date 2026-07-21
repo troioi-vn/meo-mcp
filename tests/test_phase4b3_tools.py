@@ -536,7 +536,7 @@ async def test_phase4b3_tools_are_discoverable_without_notification_actions(tmp_
 
     assert response.status_code == 200
     names = {tool["name"] for tool in response.json()["result"]["tools"]}
-    assert len(names) == 161
+    assert len(names) == 169
     assert {
         "mark_notification_read",
         "mark_all_notifications_read",
@@ -550,6 +550,16 @@ async def test_phase4b3_tools_are_discoverable_without_notification_actions(tmp_
         "delete_owner_weight",
         "create_account_invitation",
         "revoke_account_invitation",
+    } <= names
+    assert {
+        "delete_weight",
+        "delete_vaccination",
+        "renew_vaccination",
+        "upload_vaccination_photo_from_url",
+        "delete_vaccination_photo",
+        "delete_medical_record",
+        "upload_medical_record_photo_from_url",
+        "delete_medical_record_photo",
     } <= names
     assert "execute_notification_action" not in names
     await engine.dispose()

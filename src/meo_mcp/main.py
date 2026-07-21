@@ -423,6 +423,26 @@ def create_app(settings: Settings | None = None) -> Starlette:
             record_date,
         )
 
+    @server.tool(annotations=update_annotations)
+    async def delete_weight(
+        pet_id: int,
+        weight_id: int,
+        expected_weight_kg: float,
+        expected_record_date: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete one exact weight after matching its value, date, and version."""
+        return await call(
+            api.delete_weight,
+            pet_id,
+            weight_id,
+            expected_weight_kg,
+            expected_record_date,
+            base_version,
+            idempotency_key,
+        )
+
     @server.tool(annotations=create_annotations)
     async def add_vaccination(
         pet_id: int,
@@ -465,6 +485,92 @@ def create_app(settings: Settings | None = None) -> Starlette:
             administered_at,
             due_at,
             notes,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_vaccination(
+        pet_id: int,
+        vaccination_id: int,
+        expected_vaccine_name: str,
+        expected_administered_at: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete one exact vaccination while preserving linked finance history."""
+        return await call(
+            api.delete_vaccination,
+            pet_id,
+            vaccination_id,
+            expected_vaccine_name,
+            expected_administered_at,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def renew_vaccination(
+        pet_id: int,
+        vaccination_id: int,
+        expected_vaccine_name: str,
+        expected_administered_at: date,
+        vaccine_name: str,
+        administered_at: date,
+        base_version: str,
+        idempotency_key: str,
+        due_at: date | None = None,
+        notes: str | None = None,
+    ) -> CallToolResult:
+        """Complete one exact active vaccination and create its dated successor atomically."""
+        return await call(
+            api.renew_vaccination,
+            pet_id,
+            vaccination_id,
+            expected_vaccine_name,
+            expected_administered_at,
+            vaccine_name,
+            administered_at,
+            base_version,
+            idempotency_key,
+            due_at,
+            notes,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def upload_vaccination_photo_from_url(
+        pet_id: int,
+        vaccination_id: int,
+        expected_photo_id: int | None,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Replace the previewed vaccination photo from one guarded public HTTPS image."""
+        return await call(
+            api.upload_vaccination_photo_from_url,
+            pet_id,
+            vaccination_id,
+            expected_photo_id,
+            base_version,
+            source_url,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_vaccination_photo(
+        pet_id: int,
+        vaccination_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete the exact photo attached to a versioned vaccination."""
+        return await call(
+            api.delete_vaccination_photo,
+            pet_id,
+            vaccination_id,
+            photo_id,
+            base_version,
+            idempotency_key,
         )
 
     @server.tool(annotations=create_annotations)
@@ -512,6 +618,62 @@ def create_app(settings: Settings | None = None) -> Starlette:
             record_date,
             description,
             vet_name,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_medical_record(
+        pet_id: int,
+        record_id: int,
+        expected_record_type: str,
+        expected_record_date: date,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete one exact medical record while preserving linked finance history."""
+        return await call(
+            api.delete_medical_record,
+            pet_id,
+            record_id,
+            expected_record_type,
+            expected_record_date,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=create_annotations)
+    async def upload_medical_record_photo_from_url(
+        pet_id: int,
+        record_id: int,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Append one guarded public HTTPS image to an exact medical record."""
+        return await call(
+            api.upload_medical_record_photo_from_url,
+            pet_id,
+            record_id,
+            base_version,
+            source_url,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_medical_record_photo(
+        pet_id: int,
+        record_id: int,
+        photo_id: int,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Permanently delete one exact photo from a versioned medical record."""
+        return await call(
+            api.delete_medical_record_photo,
+            pet_id,
+            record_id,
+            photo_id,
+            base_version,
+            idempotency_key,
         )
 
     @server.tool(annotations=read_annotations)

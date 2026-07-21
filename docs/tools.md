@@ -165,6 +165,14 @@ part of the end-user tool surface.
 | `delete_pet` | Live | Soft-delete one exact pet after name/status/version preview | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `delete`) | pet preview; `DELETE /api/pets/{pet_id}`; absence verification | Delete | Critical; removes the pet from normal user workflows |
 | `create_helper_city_option` | Live | Create one visible city option for helper/location workflows after duplicate preview | `helpers:read` + `helpers:write` | `helpers:read` + `helpers:write` (legacy PAT: `read` + `create`) | country/city preview; `POST /api/cities`; city verification | Create | Moderate; creates shared location reference data |
 | `update_my_locale` | Live | Change the caller's locale to one advertised supported value from a versioned profile read | `profile:read` + `profile:write` | `profile:read` + `profile:write` (legacy PAT: `read` + `update`) | profile/locale preview; `PUT /api/user/locale`; profile verification | Update | Moderate; changes language preference |
+| `delete_weight` | Proposed | Delete one exact weight after value/date/version preview | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `delete`) | weight detail; `DELETE /api/pets/{pet_id}/weights/{weight_id}`; absence verification | Delete | High; permanently removes health history |
+| `delete_vaccination` | Proposed | Delete one exact vaccination while preserving any linked finance transaction | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `delete`) | vaccination detail; `DELETE /api/pets/{pet_id}/vaccinations/{vaccination_id}?linked_transaction=keep`; absence verification | Delete | Critical; permanently removes health history while finance stays authoritative |
+| `renew_vaccination` | Proposed | Complete one exact active vaccination and create its explicitly dated successor | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | vaccination detail; `POST /api/pets/{pet_id}/vaccinations/{vaccination_id}/renew`; old/new detail verification | Create/update | High; atomically changes vaccination lifecycle |
+| `upload_vaccination_photo_from_url` | Proposed | Replace the exact previewed vaccination photo from one bounded public HTTPS image | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | guarded source `GET`; vaccination detail; multipart `POST /api/pets/{pet_id}/vaccinations/{vaccination_id}/photo`; detail verification | Update | Critical; stores or replaces private medical media |
+| `delete_vaccination_photo` | Proposed | Delete the exact vaccination photo ID at a known record version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `delete`) | vaccination detail; `DELETE /api/pets/{pet_id}/vaccinations/{vaccination_id}/photo`; detail verification | Delete | Critical; permanently removes private medical media |
+| `delete_medical_record` | Proposed | Delete one exact medical record while preserving any linked finance transaction | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `delete`) | medical detail; `DELETE /api/pets/{pet_id}/medical-records/{record_id}?linked_transaction=keep`; absence verification | Delete | Critical; permanently removes health history and attached media |
+| `upload_medical_record_photo_from_url` | Proposed | Append one bounded public HTTPS image to an exact versioned medical record | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | guarded source `GET`; medical detail; multipart `POST /api/pets/{pet_id}/medical-records/{record_id}/photos`; detail verification | Create | Critical; stores private medical media |
+| `delete_medical_record_photo` | Proposed | Delete one exact photo belonging to a versioned medical record | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `delete`) | medical detail; `DELETE /api/pets/{pet_id}/medical-records/{record_id}/photos/{photo_id}`; detail verification | Delete | Critical; permanently removes private medical media |
 | `create_group` | Live | Create a named group with an explicit initial pet set | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `create`) | duplicate preview; `POST /api/groups`; detail verification | Create | High; creates shared access boundary |
 | `update_group` | Live | Rename one exact group from its current version | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `update`) | detail preview; `PUT /api/groups/{group_id}`; detail verification | Update | High; shared identity change |
 | `delete_group` | Live | Permanently delete one exact group after membership/pet preview | `groups:read` + `groups:write` | `groups:read` + `groups:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE /api/groups/{group_id}`; absence verification | Delete | Critical; destroys group and sharing state |
@@ -868,6 +876,32 @@ require the profile pair.
 - Locale update first reads the public supported-locale list and the caller's
   profile version. It sends only one advertised locale, uses profile-write
   authority and idempotency, and verifies the narrowed self profile afterward.
+
+## Phase 5B health deletion, renewal, and medical-media contract
+
+Phase 5B reuses only `health:read` plus `health:write`. It does not grant
+`finance:write`: health-record deletes always send `linked_transaction=keep`,
+and vaccination renewal never accepts a finance-expense payload. Meo rejects a
+health-only PAT that attempts either cross-domain finance mutation.
+
+- Weight deletion requires an explicit pet/weight ID, exact weight value and
+  record date, the current record version, an idempotency key, and post-delete
+  absence verification.
+- Vaccination and medical-record deletion require explicit stable IDs, exact
+  type/name plus date, current record version, idempotency, and absence
+  verification. Any linked ledger transaction is preserved.
+- Vaccination renewal requires the current active record's exact name, date,
+  and version plus the successor name/administered date/due date/notes. Meo
+  atomically completes the old record and creates the new one; the gateway
+  verifies both lifecycle states. Exact retries return the original result.
+- Medical-media import uses the same pinned-public-HTTPS, redirect, MIME, and
+  10 MiB streaming guard as pet photos. Vaccination upload also carries the
+  expected current photo ID (including explicit `null`) so replacement cannot
+  silently overwrite a changed photo. Medical uploads append one photo.
+- Photo deletion requires an exact photo ID and current parent-record version.
+  Meo touches the parent after every media mutation, so stale concurrent media
+  writes fail before mutation. Every upload/delete is idempotent and verified
+  through the corresponding narrowed record detail.
 
 ## Errors
 
