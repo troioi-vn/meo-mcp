@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import ipaddress
 import re
 import socket
@@ -41,6 +42,12 @@ PHOTO_MIME_EXTENSIONS = {
     "image/png": ".png",
     "image/webp": ".webp",
     "image/gif": ".gif",
+}
+RECEIPT_MIME_EXTENSIONS = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
 }
 
 
@@ -2362,6 +2369,34 @@ class MeoApi:
         )
         return {"transaction": self._ledger_transaction(item)}
 
+    async def inspect_ledger_transaction_receipt(
+        self, ledger_id: int, transaction_id: int
+    ) -> tuple[dict[str, Any], bytes | None, str | None]:
+        transaction = (await self.get_ledger_transaction(ledger_id, transaction_id))["transaction"]
+        metadata: dict[str, Any] = {
+            "transaction_id": transaction_id,
+            "present": bool(transaction.get("has_receipt")),
+            "mime_type": None,
+            "byte_size": None,
+            "sha256": None,
+            "version": transaction.get("version"),
+        }
+        if not metadata["present"]:
+            return {"receipt": metadata}, None, None
+        delegated = await self._delegated_token("finance:read")
+        content, mime = await self._download_receipt(
+            delegated,
+            f"/api/ledgers/{ledger_id}/transactions/{transaction_id}/receipt",
+        )
+        metadata.update(
+            {
+                "mime_type": mime,
+                "byte_size": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
+        return {"receipt": metadata}, content, mime
+
     async def list_pet_finance_transactions(self, pet_id: int, page: int = 1) -> dict[str, Any]:
         self._positive(pet_id, "pet_id")
         self._bounded_page(page, 20)
@@ -3249,6 +3284,76 @@ class MeoApi:
         return {
             "ledger_id": ledger_id,
             "transaction_id": transaction_id,
+            "deleted": True,
+            "verified": True,
+        }
+
+    async def upload_ledger_transaction_receipt_from_url(
+        self,
+        ledger_id: int,
+        transaction_id: int,
+        expected_has_receipt: bool,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(transaction_id, "transaction_id")
+        if not isinstance(expected_has_receipt, bool):
+            self._error("validation_error", "expected_has_receipt must be a boolean.", False)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_ledger_transaction(ledger_id, transaction_id))["transaction"]
+        self._require_version_available(current)
+        filename, content, mime = await self._fetch_public_receipt(source_url)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/ledgers/{ledger_id}/transactions/{transaction_id}/receipt",
+            form_data={
+                "base_version": version,
+                "expected_has_receipt": "1" if expected_has_receipt else "0",
+            },
+            files={"receipt": (filename, content, mime)},
+            idempotency_key=key,
+            expected_statuses={201},
+        )
+        verified = await self._verify(self.get_ledger_transaction, ledger_id, transaction_id)
+        if not verified["transaction"].get("has_receipt"):
+            self._verification_error("The uploaded receipt could not be verified.")
+        return {"transaction": verified["transaction"], "uploaded": True, "verified": True}
+
+    async def delete_ledger_transaction_receipt(
+        self,
+        ledger_id: int,
+        transaction_id: int,
+        expected_has_receipt: bool,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(ledger_id, "ledger_id")
+        self._positive(transaction_id, "transaction_id")
+        if expected_has_receipt is not True:
+            self._error("validation_error", "expected_has_receipt must be true.", False)
+        version = self._version(base_version)
+        key = self._idempotency_key(idempotency_key)
+        current = (await self.get_ledger_transaction(ledger_id, transaction_id))["transaction"]
+        self._require_version_available(current)
+        delegated = await self._delegated_token("finance:read", "finance:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/ledgers/{ledger_id}/transactions/{transaction_id}/receipt",
+            json_data={"base_version": version, "expected_has_receipt": True},
+            idempotency_key=key,
+            expected_statuses={204},
+        )
+        verified = await self._verify(self.get_ledger_transaction, ledger_id, transaction_id)
+        if verified["transaction"].get("has_receipt"):
+            self._verification_error("The deleted receipt is still present.")
+        return {
+            "transaction": verified["transaction"],
             "deleted": True,
             "verified": True,
         }
@@ -4878,6 +4983,12 @@ class MeoApi:
                                     "The photo source declared an invalid size.",
                                     False,
                                 )
+                            if declared_size < 0:
+                                self._error(
+                                    "source_image_invalid",
+                                    "The photo source declared an invalid size.",
+                                    False,
+                                )
                             if declared_size > PHOTO_MAX_BYTES:
                                 self._error(
                                     "source_image_too_large",
@@ -4911,6 +5022,211 @@ class MeoApi:
                 True,
             ) from exc
         self._error("source_fetch_failed", "The photo source could not be fetched.", True)
+
+    async def _fetch_public_receipt(self, source_url: str) -> tuple[str, bytes, str]:
+        current_url = self._required_text(source_url, "source_url", 2048)
+        try:
+            async with httpx.AsyncClient(
+                timeout=12, follow_redirects=False, trust_env=False
+            ) as client:
+                for redirect_count in range(PHOTO_REDIRECT_LIMIT + 1):
+                    pinned_url, hostname = await self._pinned_public_url(current_url)
+                    async with client.stream(
+                        "GET",
+                        pinned_url,
+                        headers={
+                            "Host": hostname,
+                            "Accept": "image/jpeg,image/png,image/webp,application/pdf",
+                        },
+                        extensions={"sni_hostname": hostname},
+                    ) as response:
+                        if response.status_code in {301, 302, 303, 307, 308}:
+                            location = response.headers.get("location")
+                            if redirect_count >= PHOTO_REDIRECT_LIMIT or not location:
+                                self._error(
+                                    "source_url_rejected",
+                                    "The receipt source redirect chain is not allowed.",
+                                    False,
+                                )
+                            current_url = urljoin(current_url, location)
+                            continue
+                        if response.status_code != 200:
+                            self._error(
+                                "receipt_fetch_failed",
+                                "The validated receipt source could not be fetched.",
+                                True,
+                            )
+                        content_type = (
+                            response.headers.get("content-type", "")
+                            .split(";", 1)[0]
+                            .strip()
+                            .lower()
+                        )
+                        extension = RECEIPT_MIME_EXTENSIONS.get(content_type)
+                        if extension is None:
+                            self._error(
+                                "receipt_content_invalid",
+                                "The receipt source did not return a supported content type.",
+                                False,
+                            )
+                        declared = response.headers.get("content-length")
+                        if declared is not None:
+                            try:
+                                declared_size = int(declared)
+                            except ValueError:
+                                self._error(
+                                    "receipt_content_invalid",
+                                    "The receipt source declared an invalid size.",
+                                    False,
+                                )
+                            if declared_size < 0:
+                                self._error(
+                                    "receipt_content_invalid",
+                                    "The receipt source declared an invalid size.",
+                                    False,
+                                )
+                            if declared_size > PHOTO_MAX_BYTES:
+                                self._error(
+                                    "receipt_too_large",
+                                    "The receipt source exceeds the 10 MiB limit.",
+                                    False,
+                                )
+                        chunks: list[bytes] = []
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > PHOTO_MAX_BYTES:
+                                self._error(
+                                    "receipt_too_large",
+                                    "The receipt source exceeds the 10 MiB limit.",
+                                    False,
+                                )
+                            chunks.append(chunk)
+                        if size == 0:
+                            self._error(
+                                "receipt_content_invalid",
+                                "The receipt source returned an empty body.",
+                                False,
+                            )
+                        return f"receipt{extension}", b"".join(chunks), content_type
+        except MeoApiError:
+            raise
+        except (httpx.HTTPError, OSError, UnicodeError, ValueError) as exc:
+            raise self._tool_error(
+                "receipt_fetch_failed",
+                "The validated receipt source could not be fetched.",
+                True,
+            ) from exc
+        self._error("receipt_fetch_failed", "The receipt source could not be fetched.", True)
+
+    async def _download_receipt(self, delegated: str, path: str) -> tuple[bytes, str]:
+        headers = {
+            "Authorization": f"Bearer {delegated}",
+            "Accept": "image/jpeg,image/png,image/webp,application/pdf",
+        }
+        try:
+            async with (
+                httpx.AsyncClient(timeout=12) as client,
+                client.stream(
+                    "GET",
+                    f"{str(self.settings.meo_base_url).rstrip('/')}{path}",
+                    headers=headers,
+                ) as response,
+            ):
+                if response.status_code != 200:
+                    errors = {
+                        401: (
+                            "upstream_unauthorized",
+                            "Meo Mai Moi authorization was rejected. Reconnect your account.",
+                            False,
+                        ),
+                        403: (
+                            "upstream_forbidden",
+                            "Meo Mai Moi denied access to the requested resource.",
+                            False,
+                        ),
+                        404: (
+                            "upstream_not_found",
+                            "The requested Meo Mai Moi resource was not found.",
+                            False,
+                        ),
+                        429: (
+                            "upstream_rate_limited",
+                            "Meo Mai Moi is rate-limiting requests. Try again shortly.",
+                            True,
+                        ),
+                    }
+                    if response.status_code in errors:
+                        code, message, retryable = errors[response.status_code]
+                        self._error(code, message, retryable, response.status_code)
+                    if response.status_code >= 500:
+                        self._error(
+                            "upstream_server_error",
+                            "Meo Mai Moi is temporarily unavailable. Try again shortly.",
+                            True,
+                            response.status_code,
+                        )
+                    self._error(
+                        "upstream_unexpected",
+                        "Meo Mai Moi returned an unexpected response.",
+                        False,
+                        response.status_code,
+                    )
+                mime = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if mime not in RECEIPT_MIME_EXTENSIONS:
+                    self._error(
+                        "receipt_content_invalid",
+                        "Meo returned an unsupported receipt content type.",
+                        False,
+                    )
+                declared = response.headers.get("content-length")
+                if declared is not None:
+                    try:
+                        declared_size = int(declared)
+                    except ValueError:
+                        self._error(
+                            "receipt_content_invalid",
+                            "Meo returned an invalid receipt size.",
+                            False,
+                        )
+                    if declared_size < 0:
+                        self._error(
+                            "receipt_content_invalid",
+                            "Meo returned an invalid receipt size.",
+                            False,
+                        )
+                    if declared_size > PHOTO_MAX_BYTES:
+                        self._error(
+                            "receipt_too_large",
+                            "The receipt exceeds the 10 MiB limit.",
+                            False,
+                        )
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in response.aiter_bytes():
+                    size += len(chunk)
+                    if size > PHOTO_MAX_BYTES:
+                        self._error(
+                            "receipt_too_large",
+                            "The receipt exceeds the 10 MiB limit.",
+                            False,
+                        )
+                    chunks.append(chunk)
+                if size == 0:
+                    self._error(
+                        "receipt_content_invalid",
+                        "Meo returned an empty receipt.",
+                        False,
+                    )
+                return b"".join(chunks), mime
+        except MeoApiError:
+            raise
+        except httpx.HTTPError as exc:
+            raise self._tool_error(
+                "upstream_unavailable",
+                "Meo Mai Moi is temporarily unavailable. Try again shortly.",
+                True,
+            ) from exc
 
     async def _pinned_public_url(self, source_url: str) -> tuple[str, str]:
         try:

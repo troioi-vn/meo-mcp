@@ -97,6 +97,9 @@ Current tool error codes:
 | `source_image_invalid` | no | — | Supply a non-empty JPEG, PNG, WebP, or GIF response |
 | `source_image_too_large` | no | — | Supply an image no larger than 10 MiB for photos, 5 MiB for chat images, or 2 MiB for an avatar |
 | `source_fetch_failed` | yes | — | Retry the validated source later or choose another public source |
+| `receipt_content_invalid` | no | — | Supply or retain a non-empty JPEG, PNG, WebP, or PDF receipt |
+| `receipt_too_large` | no | — | Supply a receipt no larger than 10 MiB |
+| `receipt_fetch_failed` | yes | — | Retry the validated public receipt source later or choose another source |
 | `relationship_mismatch` | no | — | Re-read sharing state; the caller's expected current roles no longer match |
 | `invitation_mismatch` | no | — | Stop; the fresh invitation preview does not match the expected pet or role |
 | `invitation_inactive` | no | `410` | Obtain a current invitation; this bearer link is no longer usable |

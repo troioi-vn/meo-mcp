@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import uuid
@@ -13,7 +14,13 @@ import uvicorn
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import CallToolResult, TextContent
+from mcp.types import (
+    BlobResourceContents,
+    CallToolResult,
+    EmbeddedResource,
+    ImageContent,
+    TextContent,
+)
 from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -1444,6 +1451,37 @@ def create_app(settings: Settings | None = None) -> Starlette:
         return await call(api.get_ledger_transaction, ledger_id, transaction_id)
 
     @server.tool(annotations=read_annotations)
+    async def inspect_ledger_transaction_receipt(
+        ledger_id: int, transaction_id: int
+    ) -> CallToolResult:
+        """Inspect one bounded private receipt after an exact transaction preview."""
+        try:
+            result, content, mime = await api.inspect_ledger_transaction_receipt(
+                ledger_id, transaction_id
+            )
+        except MeoApiError as exc:
+            return tool_error(exc)
+        items: list[TextContent | ImageContent | EmbeddedResource] = [
+            TextContent(type="text", text=json.dumps(result, separators=(",", ":")))
+        ]
+        if content is not None and mime is not None:
+            encoded = base64.b64encode(content).decode("ascii")
+            if mime.startswith("image/"):
+                items.append(ImageContent(type="image", data=encoded, mimeType=mime))
+            else:
+                items.append(
+                    EmbeddedResource(
+                        type="resource",
+                        resource=BlobResourceContents(
+                            uri=(f"meo-receipt://ledger/{ledger_id}/transaction/{transaction_id}"),
+                            mimeType=mime,
+                            blob=encoded,
+                        ),
+                    )
+                )
+        return CallToolResult(content=items, structuredContent=result, isError=False)
+
+    @server.tool(annotations=read_annotations)
     async def list_pet_finance_transactions(pet_id: int, page: int = 1) -> CallToolResult:
         """List finance transactions linked to one pet across accessible ledgers."""
         return await call(api.list_pet_finance_transactions, pet_id, page)
@@ -1825,6 +1863,44 @@ def create_app(settings: Settings | None = None) -> Starlette:
             expected_type,
             expected_amount,
             expected_occurred_on,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def upload_ledger_transaction_receipt_from_url(
+        ledger_id: int,
+        transaction_id: int,
+        expected_has_receipt: bool,
+        base_version: str,
+        source_url: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Add or replace one receipt from a bounded public HTTPS image or PDF."""
+        return await call(
+            api.upload_ledger_transaction_receipt_from_url,
+            ledger_id,
+            transaction_id,
+            expected_has_receipt,
+            base_version,
+            source_url,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def delete_ledger_transaction_receipt(
+        ledger_id: int,
+        transaction_id: int,
+        expected_has_receipt: bool,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Delete one exact versioned receipt and verify its absence."""
+        return await call(
+            api.delete_ledger_transaction_receipt,
+            ledger_id,
+            transaction_id,
+            expected_has_receipt,
             base_version,
             idempotency_key,
         )

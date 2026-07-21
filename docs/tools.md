@@ -115,6 +115,7 @@ part of the end-user tool surface.
 | `list_ledger_invitations` | Live | List pending bearer invitations for one managed ledger | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/invitations` | Read | Critical; finance invitation URLs grant access |
 | `list_ledger_transactions` | Live | Page and filter transactions in one explicit ledger | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/transactions` | Read | Critical; amounts, descriptions, people, and pet links |
 | `get_ledger_transaction` | Live | Read one exact transaction and receipt-presence flag | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/ledgers/{ledger_id}/transactions/{transaction_id}` | Read | Critical; detailed financial record |
+| `inspect_ledger_transaction_receipt` | Proposed | Return one exact private receipt through bounded MCP content after transaction preview | `finance:read` | `finance:read` (legacy PAT: `read`) | transaction detail; binary `GET /api/ledgers/{ledger_id}/transactions/{transaction_id}/receipt` | Read | Critical; private financial document/image content |
 | `list_pet_finance_transactions` | Live | Page finance entries linked to one pet across accessible ledgers | `finance:read` | `finance:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/finance-transactions` | Read | Critical; cross-ledger pet spending/income |
 | `preview_ledger_invitation` | Live | Preview a ledger bearer invitation without putting its token in a URL | `finance:read` | `finance:read` (legacy PAT: `read`) | `POST /api/mcp/ledger-invitations/preview` | Read | Critical; invitation bearer material |
 | `create_ledger` | Live | Create a titled ledger with an explicit currency | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | duplicate preview; `POST /api/ledgers`; overview verification | Create | Critical; creates shared finance boundary |
@@ -142,6 +143,8 @@ part of the end-user tool surface.
 | `create_ledger_transaction` | Live | Record one income or expense on an exact versioned ledger | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `create`) | overview preview; `POST .../transactions`; detail verification | Create | Critical; creates financial audit data |
 | `update_ledger_transaction` | Live | Correct one exact transaction at a known version | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | detail preview; `PUT .../transactions/{transaction_id}`; detail verification | Update | Critical; overwrites financial audit data |
 | `delete_ledger_transaction` | Live | Delete one exact transaction after type/amount/date preview | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | detail preview; `DELETE .../transactions/{transaction_id}`; absence verification | Delete | Critical; removes financial audit data |
+| `upload_ledger_transaction_receipt_from_url` | Proposed | Add or replace one exact transaction receipt from a bounded public HTTPS image/PDF | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `update`) | transaction preview; guarded source `GET`; multipart `POST .../transactions/{transaction_id}/receipt`; detail verification | Update | Critical; stores/replaces a private financial document |
+| `delete_ledger_transaction_receipt` | Proposed | Delete the previewed receipt from one exact versioned transaction | `finance:read` + `finance:write` | `finance:read` + `finance:write` (legacy PAT: `read` + `delete`) | transaction preview; `DELETE .../transactions/{transaction_id}/receipt`; detail verification | Delete | Critical; permanently removes a private financial document |
 | `get_notification_inbox` | Live | Read bounded bell notifications plus unread bell/message counts | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notifications/unified` | Read | High; private event and action metadata |
 | `get_notification_preferences` | Live | Read per-event delivery preferences | `notifications:read` | `notifications:read` (legacy PAT: `read`) | `GET /api/notification-preferences` | Read | Moderate; communication settings |
 | `get_my_profile` | Live | Read a narrowed self profile, locale, avatar, storage, and account state | `profile:read` | `profile:read` (legacy PAT: `read`) | `GET /api/users/me` | Read | Critical; personal identity and account metadata |
@@ -718,10 +721,8 @@ or onboarding-invitation access. Every tool uses the shared read annotations.
   bearer material: they are returned only to the authorized caller and must
   never appear in gateway logs or structured errors.
 
-Receipt binaries are not returned in Phase 4A: transaction reads expose the
-authoritative `has_receipt` flag. A future receipt tool requires a separately
-designed bounded MCP content contract rather than leaking an authenticated API
-URL or embedding an unbounded 10 MiB file.
+Phase 4A transaction reads expose only the authoritative `has_receipt` flag.
+The separately reviewed Phase 5C tools below own receipt content and mutation.
 
 ## Phase 4B1 group write contract
 
@@ -787,7 +788,7 @@ exact `base_version` from the matching read/preview.
 - Pet assignment tools accept only explicit positive pet IDs. Removal requires
   `expected_pet_name` and fails for group-synced pets in Meo.
 - Group link/unlink are finance mutations that Meo additionally authorizes
-  against the target group. Receipt binary upload/download remains out of MCP.
+  against the target group. Receipt content remains a separate Phase 5C surface.
 - Account and category create/update/archive use ledger or record versions.
   Archive tools require `expected_archived` so a stale toggle cannot invert the
   wrong way.
@@ -902,6 +903,39 @@ health-only PAT that attempts either cross-domain finance mutation.
   Meo touches the parent after every media mutation, so stale concurrent media
   writes fail before mutation. Every upload/delete is idempotent and verified
   through the corresponding narrowed record detail.
+
+## Phase 5C private finance-receipt content contract
+
+Phase 5C reuses only `finance:read` and `finance:write`. Receipt access never
+grants pet, health, group, or messaging access. Every tool first reads the exact
+ledger transaction so Meo applies ledger membership and the gateway obtains the
+authoritative `has_receipt` flag and transaction `version`.
+
+- `inspect_ledger_transaction_receipt(ledger_id, transaction_id)` downloads at
+  most 10 MiB from Meo's authenticated receipt endpoint. Accepted content is
+  JPEG, PNG, WebP, or PDF. Structured content contains only transaction ID,
+  presence, MIME type, byte size, SHA-256 digest, and version—never an
+  authenticated URL, filename, or base64 body. Images are returned as one MCP
+  `ImageContent`; PDFs as one MCP `EmbeddedResource` with a synthetic
+  `meo-receipt:` URI and base64 blob. Absent receipts return stable structured
+  absence without a binary content item.
+- `upload_ledger_transaction_receipt_from_url` requires explicit ledger and
+  transaction IDs, the previewed `expected_has_receipt` boolean, transaction
+  `base_version`, and idempotency key. The source must be public HTTPS on the
+  standard port, remain public across at most three redirects, declare or
+  stream no more than 10 MiB, and return JPEG, PNG, WebP, or PDF. Meo rechecks
+  the expected state/version before its single-file private collection adds or
+  replaces content; the gateway verifies `has_receipt=true` afterward.
+- `delete_ledger_transaction_receipt` requires `expected_has_receipt=true`, the
+  current transaction version, and an idempotency key. Meo rejects a stale or
+  absent target before mutation, touches the transaction after deletion, and
+  the gateway verifies `has_receipt=false`. Exact upload/delete retries resolve
+  through Meo's authoritative idempotency middleware before state checks.
+
+Receipt failures use the common authorization, idempotency, concurrency, and
+verification errors plus `receipt_content_invalid`, `receipt_too_large`, and
+`receipt_fetch_failed`. Private receipt bytes, source URLs, filenames, and
+digests never enter logs or structured errors.
 
 ## Errors
 

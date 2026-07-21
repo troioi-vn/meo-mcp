@@ -536,7 +536,7 @@ async def test_phase4b3_tools_are_discoverable_without_notification_actions(tmp_
 
     assert response.status_code == 200
     names = {tool["name"] for tool in response.json()["result"]["tools"]}
-    assert len(names) == 169
+    assert len(names) == 172
     assert {
         "mark_notification_read",
         "mark_all_notifications_read",
