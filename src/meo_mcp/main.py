@@ -156,8 +156,13 @@ class GuardMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/mcp" and response.status_code == 401:
             challenge = response.headers.get("WWW-Authenticate")
             if challenge and "scope=" not in challenge:
+                # Advertise the full catalog. Clients such as Cursor mirror this
+                # challenge scope into /authorize; a pets:read-only hint locked
+                # those clients to the MVP grant. DCR still defaults an omitted
+                # registration scope to pets:read, and /authorize still accepts
+                # any non-empty subset of ALLOWED_SCOPES.
                 response.headers["WWW-Authenticate"] = (
-                    f'{challenge}, scope="{" ".join(DEFAULT_SCOPES)}"'
+                    f'{challenge}, scope="{" ".join(ALLOWED_SCOPES)}"'
                 )
         return response
 

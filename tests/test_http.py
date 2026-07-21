@@ -37,7 +37,7 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
         response = await client.post("/mcp", json={})
     assert response.status_code == 401
     assert "resource_metadata=" in response.headers["www-authenticate"]
-    assert 'scope="pets:read"' in response.headers["www-authenticate"]
+    assert f'scope="{" ".join(ALLOWED_SCOPES)}"' in response.headers["www-authenticate"]
     assert metadata.json()["scopes_supported"] == ALLOWED_SCOPES
 
 
