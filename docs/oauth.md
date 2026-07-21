@@ -34,10 +34,11 @@ document.
 
 The challenge advertises the full `scopes_supported` catalog so clients that
 mirror the `WWW-Authenticate` `scope` parameter into `/authorize` (notably
-Cursor) can obtain a complete grant in one consent. DCR still defaults an
-omitted registration scope to `pets:read`. Clients that pass an explicit
-non-empty scope subset keep that subset; `/authorize` never invents scopes
-beyond the request.
+Cursor) can obtain a complete grant in one consent. DCR also defaults an omitted
+registration scope to that same catalog, because authorize rejects scopes the
+client was not registered with. Clients that pass an explicit non-empty scope
+subset at registration or authorize keep that subset; `/authorize` never invents
+scopes beyond the request.
 
 ## Authorization-code flow
 
