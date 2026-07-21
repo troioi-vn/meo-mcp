@@ -74,8 +74,9 @@ src/meo_mcp/
 
 - Routine work lands on **`dev`**. Pushing `dev` runs CI and deploys the development
   environment (operator-specific details are in the private runbook).
-- **`main` / production** is not provisioned yet. See `docs/deployment.md` and
-  `todo/04-prod-and-hardening.md`.
+- **`main`** deploys the distinct production environment only after an accepted
+  development checkpoint. See `docs/deployment.md`; live inventory remains in
+  the private operator runbook.
 - Prefer additive Alembic migrations. Do not run destructive downgrades during incidents.
 
 ---

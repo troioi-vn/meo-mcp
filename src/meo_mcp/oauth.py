@@ -72,6 +72,7 @@ ALLOWED_SCOPES = [
     "invitations:read",
     "invitations:write",
 ]
+DEFAULT_SCOPES = ["pets:read"]
 PKCE_S256_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 
 

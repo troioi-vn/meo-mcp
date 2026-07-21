@@ -32,6 +32,12 @@ An unauthenticated MCP request returns `401` with a `WWW-Authenticate` header
 whose `resource_metadata` parameter points to the path-scoped protected-resource
 document.
 
+The challenge advertises `pets:read` as the least-privilege default scope. DCR
+also defaults an omitted scope to `pets:read`; explicit valid scope requests are
+preserved. This prevents generic MCP OAuth clients from expanding an initial
+grant to the entire capability catalog merely because discovery lists every
+supported scope.
+
 ## Authorization-code flow
 
 ```text

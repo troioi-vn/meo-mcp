@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import date, datetime
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
@@ -31,10 +33,11 @@ from starlette.routing import Mount, Route
 from .config import Settings, get_settings
 from .database import make_session_factory
 from .meo_api import MeoApi, MeoApiError
-from .oauth import ALLOWED_SCOPES, DatabaseOAuthProvider
+from .oauth import ALLOWED_SCOPES, DEFAULT_SCOPES, DatabaseOAuthProvider
 from .security import redact_log_event
 
 logger = structlog.get_logger()
+request_id_context: ContextVar[str] = ContextVar("request_id", default="unbound")
 
 
 class HabitEntryInput(BaseModel):
@@ -65,6 +68,35 @@ class HelperContactInput(BaseModel):
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        started = time.monotonic()
+        context_token = request_id_context.set(request.state.request_id)
+
+        try:
+            response = await self._guarded_dispatch(request, call_next)
+        except Exception:
+            logger.exception(
+                "http_request_failed",
+                request_id=request.state.request_id,
+                method=request.method,
+                endpoint=request.url.path,
+                latency_ms=round((time.monotonic() - started) * 1000, 2),
+            )
+            raise
+        else:
+            response.headers["X-Request-ID"] = request.state.request_id
+            logger.info(
+                "http_request",
+                request_id=request.state.request_id,
+                method=request.method,
+                endpoint=request.url.path,
+                status=response.status_code,
+                latency_ms=round((time.monotonic() - started) * 1000, 2),
+            )
+            return response
+        finally:
+            request_id_context.reset(context_token)
+
+    async def _guarded_dispatch(self, request: Request, call_next):
 
         def error(code: str, message: str, status_code: int) -> JSONResponse:
             return JSONResponse(
@@ -121,7 +153,12 @@ class GuardMiddleware(BaseHTTPMiddleware):
         if origin and origin not in allowed:
             return error("invalid_origin", "The request Origin is not allowed.", 403)
         response = await call_next(request)
-        response.headers["X-Request-ID"] = request.state.request_id
+        if request.url.path == "/mcp" and response.status_code == 401:
+            challenge = response.headers.get("WWW-Authenticate")
+            if challenge and "scope=" not in challenge:
+                response.headers["WWW-Authenticate"] = (
+                    f'{challenge}, scope="{" ".join(DEFAULT_SCOPES)}"'
+                )
         return response
 
 
@@ -157,7 +194,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
             resource_server_url=settings.resource,
             required_scopes=[],
             client_registration_options=ClientRegistrationOptions(
-                enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=ALLOWED_SCOPES
+                enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=DEFAULT_SCOPES
             ),
             revocation_options=RevocationOptions(enabled=True),
         ),
@@ -211,6 +248,14 @@ def create_app(settings: Settings | None = None) -> Starlette:
         try:
             return tool_result(await operation(*args, **kwargs))
         except MeoApiError as exc:
+            upstream_status = exc.payload.get("upstream_status")
+            if isinstance(upstream_status, int) and upstream_status >= 500:
+                logger.error(
+                    "meo_upstream_error",
+                    request_id=request_id_context.get(),
+                    error_kind=exc.payload.get("code"),
+                    upstream_status=upstream_status,
+                )
             return tool_error(exc)
 
     @server.tool(annotations=read_annotations)

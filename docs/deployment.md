@@ -1,7 +1,7 @@
 # Deployment
 
-This repo ships deploy mechanics: Compose, Alembic, CI configuration, and an
-NGINX development vhost. Public service names and topology required by those
+This repo ships deploy mechanics: Compose, Alembic, CI configuration, and NGINX
+vhosts for both environments. Public service names and topology required by those
 artifacts may appear here. Private inventory belongs in the operator runbook.
 
 Never publish IP addresses, SSH targets or usernames, checkout paths, database
@@ -15,16 +15,17 @@ local development or architecture comprehension.
 | Git branch | Role |
 |------------|------|
 | `dev` | Development: CI tests, migrates, rebuilds, and health-checks the long-lived checkout |
-| `main` | Future production target; no deploy workflow yet |
+| `main` | Production: CI tests, migrates the distinct production database, rebuilds, and checks loopback plus public health |
 
-## Release path (dev)
+## Release paths
 
-1. Push a tested change to `dev`.
-2. CI runs tests, updates the remote checkout, applies Alembic migrations, rebuilds
-   Compose, and checks health. Operator-specific targets and recovery commands
-   live in the private runbook.
-3. Roll back by deploying the preceding `dev` SHA. Migrations are additive; do not
-   use a destructive downgrade during an incident.
+1. Push routine tested changes to `dev` and accept the development deployment.
+2. Promote the accepted commit to `main` through an intentional merge.
+3. CI runs tests, updates the remote checkout, applies Alembic migrations, rebuilds
+   Compose, and checks the environment's health. Operator-specific targets and
+   recovery commands live in the private runbook.
+4. Roll back by deploying the preceding branch SHA. Migrations are additive; do
+   not use a destructive downgrade during an incident.
 
 ## Configuration
 
@@ -32,6 +33,12 @@ The server-managed `.env` holds `DATABASE_URL`, public and Meo base URLs, the Me
 connector API key/HMAC secret, and a unique 32-byte base64url AES key. Do not
 store it in Git. Recovery and CI injection of those values are documented in
 the private operator runbook — not in this repository.
+
+Application logs are structured JSON and retain request ID, method, endpoint,
+status, and latency without query strings, headers, bodies, or credentials.
+Upstream 5xx events record only the request ID, stable error code, and status.
+Compose rotates container JSON logs at 10 MiB with three files; the reverse
+proxy keeps environment-specific access and error logs under host log rotation.
 
 ## Local baseline
 
@@ -78,9 +85,11 @@ below.
 - Rollback means running the preceding application image against the current
   additive schema. Do not downgrade the database during incident rollback.
 
-## Future production (not provisioned)
+## Production
 
-Production will use `main`, a distinct public hostname, distinct database
-credentials, and a host/port chosen after a fresh inventory. Track cutover work
-in `todo/04-prod-and-hardening.md` and record private live facts only in the
+Production serves `https://mcp.meo-mai-moi.com/mcp` from `main`. It has a
+distinct database, credentials, delegated-token encryption key, connector
+credentials, Compose project, TLS certificate, and server-managed environment.
+Development remains the default integration playground. Promote only accepted
+commits, and keep all live inventory and recovery material in the private
 operator runbook.

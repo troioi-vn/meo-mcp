@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 from datetime import timedelta
 from uuid import uuid4
 
@@ -36,7 +37,41 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
         response = await client.post("/mcp", json={})
     assert response.status_code == 401
     assert "resource_metadata=" in response.headers["www-authenticate"]
+    assert 'scope="pets:read"' in response.headers["www-authenticate"]
     assert metadata.json()["scopes_supported"] == ALLOWED_SCOPES
+
+
+@pytest.mark.asyncio
+async def test_request_log_is_structured_and_omits_query_values(caplog) -> None:
+    key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
+    app = create_app(
+        Settings(
+            database_url="sqlite+aiosqlite:///ignored.db",
+            token_encryption_key=key,
+            meo_connector_hmac_secret="hmac",
+            meo_connector_api_key="key",
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url=str(app.state.settings.public_base_url),
+        ) as client:
+            response = await client.get(
+                "/health?access_token=must-not-appear",
+                headers={"X-Request-ID": "request-log-test"},
+            )
+
+    assert response.status_code == 200
+    events = [json.loads(record.message) for record in caplog.records]
+    request_event = next(event for event in events if event.get("event") == "http_request")
+    assert request_event["request_id"] == "request-log-test"
+    assert request_event["method"] == "GET"
+    assert request_event["endpoint"] == "/health"
+    assert request_event["status"] == 200
+    assert isinstance(request_event["latency_ms"], float)
+    assert "must-not-appear" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -413,7 +448,7 @@ async def test_guard_validates_host_origin_size_and_request_ids() -> None:
 )
 @pytest.mark.asyncio
 async def test_list_pets_translates_upstream_errors_to_structured_tool_results(
-    tmp_path, status: int, expected_code: str, retryable: bool
+    tmp_path, caplog, status: int, expected_code: str, retryable: bool
 ) -> None:
     database_url = f"sqlite+aiosqlite:///{tmp_path / f'upstream-{status}.db'}"
     key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
@@ -452,7 +487,7 @@ async def test_list_pets_translates_upstream_errors_to_structured_tool_results(
 
     app = create_app(settings)
     transport = httpx.ASGITransport(app=app)
-    with respx.mock:
+    with respx.mock, caplog.at_level(logging.INFO):
         respx.get("https://app.example.com/api/my-pets").mock(
             return_value=httpx.Response(
                 status,
@@ -489,4 +524,17 @@ async def test_list_pets_translates_upstream_errors_to_structured_tool_results(
         "upstream_status": status,
     }
     assert "upstream detail" not in result["content"][0]["text"]
+    if status == 503:
+        events = [
+            json.loads(record.message)
+            for record in caplog.records
+            if record.message.startswith("{")
+        ]
+        upstream_event = next(
+            event for event in events if event.get("event") == "meo_upstream_error"
+        )
+        assert upstream_event["request_id"] != "unbound"
+        assert upstream_event["error_kind"] == "upstream_server_error"
+        assert upstream_event["upstream_status"] == 503
+        assert "delegated-pat" not in caplog.text
     await engine.dispose()
