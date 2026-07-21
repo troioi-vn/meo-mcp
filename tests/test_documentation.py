@@ -91,6 +91,13 @@ def test_tool_catalog_matches_the_implemented_scope_mapping() -> None:
     assert "`update_my_profile_name`" in catalog
     assert "`create_owner_weight`" in catalog
     assert "`create_account_invitation`" in catalog
+    assert "| Proposed |" not in catalog
+    assert "## Phase 5D final surface audit and durable exclusions" in catalog
+    assert "`/api/telegram/status`" in catalog
+    assert "`/api/push-subscriptions*`" in catalog
+    assert not any(
+        scope.startswith(("telegram:", "devices:", "credentials:")) for scope in ALLOWED_SCOPES
+    )
 
 
 def test_meo_mcp_skill_metadata_and_snapshot_match() -> None:

@@ -937,6 +937,45 @@ verification errors plus `receipt_content_invalid`, `receipt_too_large`, and
 `receipt_fetch_failed`. Private receipt bytes, source URLs, filenames, and
 digests never enter logs or structured errors.
 
+## Phase 5D final surface audit and durable exclusions
+
+The final audit compares the authority's registered API routes, generated
+OpenAPI paths, React user journeys, and legacy connector shapes against this
+catalog. The 172 live tools cover every agent-useful normal-user domain listed
+in the roadmap. Routes are not duplicated merely because the SPA has a separate
+projection, compatibility alias, or telemetry call.
+
+Telegram account connection remains deliberately outside MCP. The status,
+Mini App link, link-token, disconnect, and test-notification routes form one
+external-identity lifecycle: link URLs are short-lived bearer material, Mini
+App initialization data is an identity proof, linking can move a Telegram
+identity between Meo accounts, disconnecting removes an authentication and
+delivery binding, and the test send is administrative. A status-only scope
+would provide no safe agent action and folding these operations into
+`notifications:*` would incorrectly grant identity control. Meo therefore
+rejects bearer PAT authentication on the entire authenticated Telegram route
+family. Agents can still inspect and change per-event Telegram delivery flags
+through the existing notification-preference tools after the user connects the
+account in the browser.
+
+The remaining exclusions are durable product/security decisions:
+
+| Surface | Representative authority routes | Why it is not an MCP tool |
+|---------|---------------------------------|---------------------------|
+| Authentication, verification, recovery, and account destruction | login/logout/registration; email verification and password reset/change; email identity change; `DELETE /api/users/me` | These consume or replace human credentials, prove mailbox/browser control, invalidate sessions, or destroy the account. The user completes them in the first-party browser. |
+| Credential and consent plumbing | `/api/user/api-tokens*`; `/api/gpt-auth/*`; `/api/mcp-auth/*`; invitation-code validation | These mint/revoke credentials or implement connector OAuth itself. Exposing them as tools would let one credential create or approve another. Authenticated browser consent routes reject PATs. |
+| Browser/device delivery state | `/api/push-subscriptions*`; `/api/unsubscribe`; generic notification-action handlers | Push subscriptions contain browser-device keys, unsubscribe uses signed bearer material, and generic actions dispatch heterogeneous handlers. Authenticated browser/device routes reject PATs; reviewed mark-read and preference tools remain live. |
+| Telegram identity binding | `/api/telegram/status`, link, disconnect, and test routes; Telegram login routes | This is a device-mediated external login/delivery identity lifecycle, not notification content. Authenticated account-link routes reject PATs and no Telegram scope is advertised. |
+| Browser session and administration | legacy `/api/user`; impersonation; admin/Filament; webhooks | These expose session state, administrative authority, or server-to-server ingress. Session-only routes reject PATs; admin and webhook surfaces remain outside the end-user gateway. |
+| Presentation, compatibility, and telemetry | pet section/featured/view projections; legacy message and invitation URL routes; public settings and version | Canonical semantic tools already cover the underlying pet, messaging, invitation, and profile state. Layout projections, compatibility aliases, view counters, and client bootstrap metadata are not separate user intent. |
+| Pre-account and legal browser journeys | waitlist, demo login, registration invitation checks, and placement-terms document | These occur before authenticated MCP authorization or require direct human review. An agent must not manufacture registration state or stand in for legal acknowledgement. |
+
+Commented-out or removed routes are not product capabilities and stay
+unexplained only until the authority implements a real normal-user workflow.
+Any future route that becomes agent-useful must receive a semantic catalog row,
+narrow scope/ability, schema, risk analysis, tests, deployment, and live
+acceptance before this audit can remain complete.
+
 ## Errors
 
 Every tool can return `scope_required`, `authorization_inactive`, or the common
