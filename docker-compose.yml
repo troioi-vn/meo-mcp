@@ -1,0 +1,21 @@
+services:
+  meo-mcp:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:${MEO_MCP_PORT:-8020}:8020"
+    networks:
+      - default
+      - upstream
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+networks:
+  upstream:
+    external: true
+    name: ${UPSTREAM_NETWORK_NAME:-shared-services}

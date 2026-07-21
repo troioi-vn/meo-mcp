@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meo MCP Gateway"
+  short_description: "Operate and extend the Meo MCP gateway safely"
+  default_prompt: "Use $meo-mcp to connect to, smoke-test, or safely extend the Meo MCP gateway."
