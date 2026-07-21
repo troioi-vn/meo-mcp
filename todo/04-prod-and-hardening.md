@@ -1,6 +1,6 @@
 # Production cutover and hardening
 
-Status: not started
+Status: in progress — awaiting explicit production provisioning approval
 
 ## Goal
 
@@ -14,16 +14,21 @@ service names and reusable deployment mechanics may remain in this repository.
 
 ## Current state
 
-- Development environment only (see the private operator runbook)
-- `main` has no deploy workflow; production not provisioned
-- Connector / allowlist policy is managed with Meo + the private operator runbook
-- Single read tool; write surface will grow via `todo/01-mcp-feature-coverage.md`
+- Plans 00, 02, 03, and 01 are complete and archived under `todo/done/`.
+- Development exposes the audited 172-tool, 26-scope surface documented in
+  `docs/tools.md`; broad cross-domain scopes are not used.
+- Comprehensive fresh-client development smoke testing covers reads and reversible
+  writes across every shipped domain. Multi-party and irreversible workflows remain
+  explicit production acceptance items.
+- Development environment only (see the private operator runbook).
+- `main` has no deploy workflow; production is not provisioned.
+- Connector / allowlist policy is managed with Meo + the private operator runbook.
 
 ## Work items
 
 ### Production provision
 
-- [ ] Inventory the production host (ports, TLS, Docker networks) before choosing bind port
+- [x] Inventory the production host (ports, TLS, Docker networks) before choosing bind port
 - [ ] Provision a distinct production database and credentials
 - [ ] DNS + reverse proxy for the production public hostname
 - [ ] Operator-managed `.env`; document secret recovery/CI injection in the private runbook
@@ -47,12 +52,12 @@ service names and reusable deployment mechanics may remain in this repository.
 
 ### Write-tool safety
 
-- [ ] Confirm every development write phase already passed the safety gates in
+- [x] Confirm every development write phase already passed the safety gates in
       `todo/01-mcp-feature-coverage.md`; production review is an additional gate
 - [ ] Before enabling write scopes in prod: audit tool descriptions for irreversible
       actions (delete pet, send message, finalize placement, finance mutations)
-- [ ] Prefer `readOnlyHint` / destructive annotations where FastMCP supports them
-- [ ] Require enforceable safeguards for high-impact actions: explicit targets,
+- [x] Prefer `readOnlyHint` / destructive annotations where FastMCP supports them
+- [x] Require enforceable safeguards for high-impact actions: explicit targets,
       narrow scopes, idempotency where possible, read/preview before write, and
       post-write verification; descriptions alone are insufficient
 - [ ] Rate limits / body size already partially guarded — revisit limits under write load
