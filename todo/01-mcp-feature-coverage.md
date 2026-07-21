@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 5B complete; Phase 5C is next)
+Status: in progress (Phases 1A through 5C complete; Phase 5D is next)
 
 ## Goal
 
@@ -246,7 +246,7 @@ to expose browser plumbing or account-recovery surfaces.
       renewal; guarded vaccination/medical photo import and deletion
 - [x] Phase 5B: authority abilities, idempotency/concurrency enforcement, tests,
       deployment, and real-client smoke
-- [ ] Phase 5C: bounded private finance-receipt inspection/import/deletion with
+- [x] Phase 5C: bounded private finance-receipt inspection/import/deletion with
       an explicit MCP content contract, tests, deployment, and real-client smoke
 - [ ] Phase 5D: separately review Telegram notification/account linking and
       disconnect semantics with dedicated narrow scopes or a durable product-
@@ -277,6 +277,16 @@ live smoke exposed and fixed normalization of Laravel date casts before exact
 target comparison. All disposable records were removed; post-acceptance logs
 contained no fatal or credential-pattern matches, and both GPT connector
 environments remained healthy and able to reach Meo.
+
+Phase 5C development acceptance on 2026-07-21 deployed Meo commit `cdec0061`
+in pipeline `#325` and gateway commit `a287aee` in pipeline `#46`. A fresh
+OAuth MCP SDK client discovered all 172 tools and all three receipt additions.
+One disposable transaction verified exact create replay, bounded public-image
+receipt import and replay, authenticated MCP image-content inspection with
+size and digest metadata, receipt deletion replay, and complete transaction
+cleanup. Post-acceptance gateway and authority log scans found no fatal or
+credential-pattern matches. Both GPT connector environments remained healthy
+and able to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
