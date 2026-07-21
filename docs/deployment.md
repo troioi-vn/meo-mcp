@@ -40,6 +40,20 @@ Upstream 5xx events record only the request ID, stable error code, and status.
 Compose rotates container JSON logs at 10 MiB with three files; the reverse
 proxy keeps environment-specific access and error logs under host log rotation.
 
+The minimal production alert policy is intentionally derivable from those
+stable events:
+
+- treat two consecutive public or loopback `/health` failures as an immediate
+  service alert; deployment pipelines fail on the same health boundary
+- investigate OAuth endpoint failures above 5% with at least 10 requests in a
+  five-minute window
+- investigate three `meo_upstream_error` events in five minutes, and escalate
+  if that rate persists for ten minutes
+
+Alert delivery and live log access are operator concerns documented in the
+private runbook. The public contract is the health endpoint and the structured,
+credential-free events above.
+
 ## Local baseline
 
 The committed `docker-compose.yml` is the deployment topology: it expects an
@@ -93,3 +107,9 @@ credentials, Compose project, TLS certificate, and server-managed environment.
 Development remains the default integration playground. Promote only accepted
 commits, and keep all live inventory and recovery material in the private
 operator runbook.
+
+Production cutover acceptance must cover OAuth discovery and PKCE, explicit
+narrow-scope client registration and consent, authenticated tool discovery and
+one representative read/write cycle, refresh rotation and replay-family
+revocation, log-redaction review, and an application rollback to a prior SHA
+without downgrading the additive database schema.
