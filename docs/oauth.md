@@ -32,11 +32,12 @@ An unauthenticated MCP request returns `401` with a `WWW-Authenticate` header
 whose `resource_metadata` parameter points to the path-scoped protected-resource
 document.
 
-The challenge advertises `pets:read` as the least-privilege default scope. DCR
-also defaults an omitted scope to `pets:read`; explicit valid scope requests are
-preserved. This prevents generic MCP OAuth clients from expanding an initial
-grant to the entire capability catalog merely because discovery lists every
-supported scope.
+The challenge advertises the full `scopes_supported` catalog so clients that
+mirror the `WWW-Authenticate` `scope` parameter into `/authorize` (notably
+Cursor) can obtain a complete grant in one consent. DCR still defaults an
+omitted registration scope to `pets:read`. Clients that pass an explicit
+non-empty scope subset keep that subset; `/authorize` never invents scopes
+beyond the request.
 
 ## Authorization-code flow
 
