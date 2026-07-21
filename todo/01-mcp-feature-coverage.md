@@ -1,6 +1,6 @@
 # MCP feature coverage (100% end-user surface)
 
-Status: in progress (Phases 1A through 5A complete; Phase 5B is next)
+Status: in progress (Phases 1A through 5B complete; Phase 5C is next)
 
 ## Goal
 
@@ -242,9 +242,9 @@ to expose browser plumbing or account-recovery surfaces.
       and deletion, helper city-option creation, and self-locale update
 - [x] Phase 5A: authority abilities, stable target/version enforcement,
       duplicate handling, tests, deployment, and real-client smoke
-- [ ] Phase 5B: weight, vaccination, and medical-record deletion; vaccination
+- [x] Phase 5B: weight, vaccination, and medical-record deletion; vaccination
       renewal; guarded vaccination/medical photo import and deletion
-- [ ] Phase 5B: authority abilities, idempotency/concurrency enforcement, tests,
+- [x] Phase 5B: authority abilities, idempotency/concurrency enforcement, tests,
       deployment, and real-client smoke
 - [ ] Phase 5C: bounded private finance-receipt inspection/import/deletion with
       an explicit MCP content contract, tests, deployment, and real-client smoke
@@ -266,6 +266,17 @@ automation but intentionally not called live because neither shared-reference
 endpoint has a cleanup path. Cleanup completed, post-acceptance logs contained
 no fatal or credential-pattern matches, and both GPT connector environments
 remained healthy and able to reach Meo.
+
+Phase 5B development acceptance on 2026-07-21 deployed Meo commit `2aa1f076`
+in pipeline `#324` and gateway commits `3e1c4c7` and `ca14646` in pipelines
+`#43` and `#44`. A fresh OAuth MCP SDK client discovered all 169 tools and the
+eight Phase 5B additions. Disposable weight, vaccination renewal/photo, and
+medical-record/photo lifecycles each verified exact create or mutation replay,
+versioned deletion replay, finance preservation, and post-write reads. The
+live smoke exposed and fixed normalization of Laravel date casts before exact
+target comparison. All disposable records were removed; post-acceptance logs
+contained no fatal or credential-pattern matches, and both GPT connector
+environments remained healthy and able to reach Meo.
 
 ## Meo-side work (coordinate in meo-mai-moi)
 
