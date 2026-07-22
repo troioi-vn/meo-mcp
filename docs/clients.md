@@ -106,6 +106,54 @@ Cursor supports OAuth for remote Streamable HTTP servers; consult its
 [MCP documentation](https://docs.cursor.com/context/model-context-protocol) if
 the settings labels have changed.
 
+## OpenClaw
+
+Current OpenClaw releases have a native MCP registry and OAuth client. The
+public [Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill)
+instructs an OpenClaw agent with execution access to perform this setup itself
+after the user explicitly asks it to connect or authorize Meo.
+
+For manual setup, save the unauthenticated server first, then start OAuth:
+
+```bash
+openclaw mcp add meo-mai-moi \
+  --url <MCP_BASE_URL>/mcp \
+  --transport streamable-http \
+  --auth oauth \
+  --oauth-scope 'pets:read pets:write health:read health:write microchips:read microchips:write finance:read finance:write' \
+  --no-probe
+openclaw mcp login meo-mai-moi
+```
+
+That initial pet-management grant covers profile, health, microchip, and
+finance reads and writes. It is intentionally broader than a read-only smoke
+test and the consent screen remains the final approval boundary. For a named
+narrower task, replace it with only the relevant read/write pair.
+
+OpenClaw's headless OAuth flow prints an authorization URL and then accepts the
+short-lived code from the final browser redirect with
+`openclaw mcp login meo-mai-moi --code <code>`. A remote browser may fail to
+load the loopback `localhost:8989` page; copy only the `code` value from its
+address bar. Treat the URL and code as temporary credentials: use them only in
+the same private one-to-one session, exchange the code immediately, and never
+put either in groups, issues, screenshots, or logs. Use a local shell instead
+when the conversation is not private.
+
+Verify and activate the connection:
+
+```bash
+openclaw mcp status --verbose
+openclaw mcp doctor meo-mai-moi --probe
+openclaw mcp reload
+```
+
+The complete Meo tool catalog remains visible; each tool still enforces its
+OAuth scope. A fresh agent message may be required after reload before the new
+tools are projected into the model runtime. If a later call reports
+`insufficient_scope`, add only the missing domain's read/write pair and repeat
+OAuth. See OpenClaw's [native MCP documentation](https://docs.openclaw.ai/cli/mcp)
+for current command details.
+
 ## MCP Inspector
 
 Start the official Inspector UI:
