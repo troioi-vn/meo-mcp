@@ -19,6 +19,9 @@ local development or architecture comprehension.
 
 ## Release paths
 
+Follow the complete release procedure in [`release.md`](release.md). In
+summary:
+
 1. Push routine tested changes to `dev` and accept the development deployment.
 2. Promote the accepted commit to `main` through an intentional merge.
 3. CI runs tests, updates the remote checkout, applies Alembic migrations, rebuilds
@@ -91,8 +94,10 @@ below.
 - Refresh tokens rotate. Reusing a consumed refresh token revokes its grant,
   access tokens, and refresh-token family locally before best-effort upstream
   revocation.
-- OAuth token requests must carry the exact MCP resource audience. Browser
-  origins, request hosts, and the 1 MiB request-body limit are enforced before
+- Authorization-code token requests must carry the exact MCP resource audience.
+  Refresh requests may omit it and retain their refresh token's bound audience;
+  any supplied refresh audience must still match exactly. Browser origins,
+  request hosts, and the 1 MiB request-body limit are enforced before
   application handlers.
 - Tool failures use MCP `isError` results containing stable JSON fields:
   `code`, `message`, `retryable`, and (when applicable) `upstream_status`.
