@@ -11,6 +11,7 @@ PUBLIC_DOCS = [
         path
         for directory in (ROOT / "docs", ROOT / "todo", ROOT / ".agents" / "skills")
         for path in directory.rglob("*.md")
+        if "tmp" not in path.relative_to(directory).parts
     ),
 ]
 

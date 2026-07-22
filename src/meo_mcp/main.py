@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
 
 from .config import Settings, get_settings
@@ -38,6 +38,38 @@ from .security import redact_log_event
 
 logger = structlog.get_logger()
 request_id_context: ContextVar[str] = ContextVar("request_id", default="unbound")
+
+LANDING_PAGE = """Meo Mai Moi MCP
+
+Pet management for nerds: a secure OAuth gateway for agents that help people
+manage pets, care records, sharing, rehoming, messages, groups, and finances.
+
+Meo Mai Moi remains the product and authorization authority. This service is
+its Model Context Protocol (MCP) gateway.
+
+Connect an OAuth-capable MCP client to:
+{base_url}/mcp
+
+Start safely:
+1. Add the remote Streamable HTTP server and authenticate with Meo OAuth.
+2. Discover tools and request only the scopes needed for the task.
+3. Begin with a read such as list_pets; read targets before consequential writes.
+
+Do not paste bearer tokens manually. OAuth handles authorization and the
+gateway enforces narrow scopes, stable targets, and write verification.
+
+Agent skill:
+https://github.com/troioi-vn/meo-mcp-skill
+
+Connect a client:
+https://github.com/troioi-vn/meo-mcp/blob/main/docs/clients.md
+
+Tool catalog:
+https://github.com/troioi-vn/meo-mcp/blob/main/docs/tools.md
+
+Health:
+{base_url}/health
+"""
 
 
 class HabitEntryInput(BaseModel):
@@ -2525,6 +2557,12 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def health(_: Request) -> Response:
         return JSONResponse({"status": "ok"})
 
+    async def landing(_: Request) -> Response:
+        return PlainTextResponse(
+            LANDING_PAGE.format(base_url=str(settings.public_base_url).rstrip("/")),
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+
     async def protected_resource(_: Request) -> Response:
         return JSONResponse(
             {
@@ -2563,6 +2601,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     app = Starlette(
         routes=[
+            Route("/", landing),
             Route("/health", health),
             Route("/.well-known/oauth-protected-resource", protected_resource),
             Route("/.well-known/oauth-protected-resource/mcp", protected_resource),
