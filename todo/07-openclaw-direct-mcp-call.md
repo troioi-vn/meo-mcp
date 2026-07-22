@@ -1,6 +1,6 @@
 # Upstream OpenClaw direct MCP tool call
 
-Status: not started
+Status: upstream PR open
 
 ## Goal
 
@@ -11,6 +11,12 @@ sessions.
 
 Target an upstream pull request. Upstream review may proceed independently and
 must not block Meo releases.
+
+## Upstream links
+
+- Issue: https://github.com/openclaw/openclaw/issues/112761
+- PR: https://github.com/openclaw/openclaw/pull/112765
+- Branch (fork): `troioi-vn/openclaw` `feat/mcp-call-cli`
 
 ## Proposed interface
 
@@ -30,43 +36,43 @@ openclaw mcp call <server> <tool> [--input <json-object> | --input-file <path-or
 
 ### Upstream grounding and design
 
-- [ ] Locate the canonical OpenClaw source and read its contribution, CLI,
+- [x] Locate the canonical OpenClaw source and read its contribution, CLI,
       testing, MCP runtime, credential-store, tool-filter, and approval-policy
       instructions completely
-- [ ] Search for an existing equivalent or pending proposal before opening work;
+- [x] Search for an existing equivalent or pending proposal before opening work;
       join it if it already satisfies this contract
-- [ ] Open a concise design issue when required by upstream policy, linking the
+- [x] Open a concise design issue when required by upstream policy, linking the
       real projection/debugging use case without including private account data
-- [ ] Keep command naming and help formatting consistent with the existing
+- [x] Keep command naming and help formatting consistent with the existing
       `openclaw mcp` command group; request upstream feedback only if the project
       has a conflicting established convention
 
 ### Implementation
 
-- [ ] Reuse the same configured MCP runtime, OAuth credential store, refresh
+- [x] Reuse the same configured MCP runtime, OAuth credential store, refresh
       behavior, server enablement, tool filtering, approval gates, timeouts, and
       redaction path used by normal OpenClaw MCP sessions
-- [ ] Resolve the configured server and discover the named tool before calling;
+- [x] Resolve the configured server and discover the named tool before calling;
       reject ambiguous, filtered, or unavailable tools with actionable errors
-- [ ] Parse exactly one JSON object from `--input`, a file, or stdin; bound input
+- [x] Parse exactly one JSON object from `--input`, a file, or stdin; bound input
       size and reject arrays, scalars, trailing data, and conflicting input flags
-- [ ] Preserve structured MCP success content and structured tool errors rather
+- [x] Preserve structured MCP success content and structured tool errors rather
       than flattening them into prose
-- [ ] Ensure Ctrl-C, timeout, and transport failures close the MCP session and do
+- [x] Ensure Ctrl-C, timeout, and transport failures close the MCP session and do
       not corrupt or print stored OAuth state
-- [ ] Add CLI help and operator documentation that position `call` beside
+- [x] Add CLI help and operator documentation that position `call` beside
       `probe`: probe diagnoses connection/catalog state; call verifies one tool
 
 ### Upstream delivery
 
-- [ ] Add focused tests using upstream fixtures rather than real credentials
-- [ ] Run the upstream documented lint, type, unit, CLI integration, and package
+- [x] Add focused tests using upstream fixtures rather than real credentials
+- [x] Run the upstream documented lint, type, unit, CLI integration, and package
       checks
-- [ ] Commit on a dedicated contribution branch, push only to an authorized fork,
+- [x] Commit on a dedicated contribution branch, push only to an authorized fork,
       and open an upstream pull request with interface, security, and test notes
 - [ ] Address review without weakening credential handling, filters, or approval
       enforcement; record the issue/PR link in this plan
-- [ ] Do not vendor an unmerged OpenClaw patch into Meo repositories
+- [x] Do not vendor an unmerged OpenClaw patch into Meo repositories
 
 ## Test cases
 
