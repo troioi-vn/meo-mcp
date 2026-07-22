@@ -355,9 +355,13 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def list_vaccinations(
         pet_id: int,
         page: int = 1,
-        status: Literal["active", "completed", "all"] = "active",
+        status: Literal["active", "overdue", "completed", "all"] = "active",
     ) -> CallToolResult:
-        """List a pet's vaccinations, optionally filtered by lifecycle status."""
+        """List a pet's vaccinations by lifecycle status.
+
+        Prefer status=overdue for incomplete renewals past due. Trust the
+        authoritative is_overdue boolean; do not infer overdue from local time.
+        """
         return await call(api.list_vaccinations, pet_id, page, status)
 
     @server.tool(annotations=read_annotations)

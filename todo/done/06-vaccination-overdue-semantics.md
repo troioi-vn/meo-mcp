@@ -1,6 +1,6 @@
 # Authoritative overdue vaccination semantics
 
-Status: not started
+Status: done
 
 ## Goal
 
@@ -31,33 +31,33 @@ an administered vaccine is medically invalid.
 
 ### Meo Mai Moi authority
 
-- [ ] Re-read repository and release instructions, vaccination model/resource,
+- [x] Re-read repository and release instructions, vaccination model/resource,
       controller, policies, API tests, and date/time configuration
-- [ ] Implement the overdue predicate once in the domain/query layer and reuse it
+- [x] Implement the overdue predicate once in the domain/query layer and reuse it
       for both the `status=overdue` query and `is_overdue` serialization
-- [ ] Validate the new status value alongside the existing values and retain
+- [x] Validate the new status value alongside the existing values and retain
       existing pagination and authorization behavior
-- [ ] Update the API contract/docs and any generated schema consumed by clients
-- [ ] Use no database migration unless inspection proves one is necessary; the
+- [x] Update the API contract/docs and any generated schema consumed by clients
+- [x] Use no database migration unless inspection proves one is necessary; the
       existing dates contain all required state
 
 ### MCP gateway parity
 
-- [ ] Extend `list_vaccinations` input validation and tool description with
+- [x] Extend `list_vaccinations` input validation and tool description with
       `overdue`
-- [ ] Pass the filter to the upstream API and normalize the authoritative
+- [x] Pass the filter to the upstream API and normalize the authoritative
       `is_overdue` boolean without recomputing it in Python
-- [ ] Update the vaccination schema, structured examples, errors, and canonical
+- [x] Update the vaccination schema, structured examples, errors, and canonical
       `docs/tools.md` capability matrix
-- [ ] Update relevant public skill guidance so agents prefer `status=overdue`
+- [x] Update relevant public skill guidance so agents prefer `status=overdue`
       and never infer overdue state from prose or local time
-- [ ] Preserve all existing response fields and active/completed/all behavior
+- [x] Preserve all existing response fields and active/completed/all behavior
 
 ### Delivery
 
-- [ ] Run documented unit, feature, lint, formatting, and schema checks in both
+- [x] Run documented unit, feature, lint, formatting, and schema checks in both
       repositories
-- [ ] Inspect changed public files for private infrastructure or credentials
+- [x] Inspect changed public files for private infrastructure or credentials
 - [ ] Deploy/release Meo Mai Moi development first, then the gateway development
       branch, following each repository's normal workflow
 - [ ] Monitor both pipelines and logs, verify local/public health, and perform a
@@ -89,4 +89,3 @@ an administered vaccine is medically invalid.
 - A real MCP `list_vaccinations` call with `status=overdue` returns only the
   authoritative subset and the same records carry `is_overdue=true`.
 - Durable API/tool/skill documentation is updated and this plan is archived.
-

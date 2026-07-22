@@ -18,14 +18,13 @@ the private operator runbook only.
 
 | Plan | Focus | Status |
 |------|-------|--------|
-| [06-vaccination-overdue-semantics.md](06-vaccination-overdue-semantics.md) | Authoritative overdue-renewal filter and schema | Not started |
 | [07-openclaw-direct-mcp-call.md](07-openclaw-direct-mcp-call.md) | Upstream generic MCP tool-call command | Not started |
 
 ## Execution order
 
-Plans 05 and 06 may proceed independently. Plan 07 is an upstream OpenClaw
-contribution and may proceed in parallel with both. Complete and archive each
-plan independently; an upstream review wait must not block Meo releases.
+Plan 07 is an upstream OpenClaw contribution and may proceed independently.
+Complete and archive each plan independently; an upstream review wait must not
+block Meo releases.
 
 ## Completed plans
 
@@ -37,3 +36,4 @@ plan independently; an upstream review wait must not block Meo releases.
 | [01-mcp-feature-coverage.md](done/01-mcp-feature-coverage.md) | Full end-user MCP tool/scope coverage and durable exclusions |
 | [04-prod-and-hardening.md](done/04-prod-and-hardening.md) | Production cutover, auth policy, observability, write safety, and rollback acceptance |
 | [05-agent-authorization-ux.md](done/05-agent-authorization-ux.md) | Public skill and OpenClaw connection/OAuth UX |
+| [06-vaccination-overdue-semantics.md](done/06-vaccination-overdue-semantics.md) | Authoritative overdue-renewal filter and schema |

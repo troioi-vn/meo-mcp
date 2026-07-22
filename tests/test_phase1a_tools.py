@@ -10,7 +10,7 @@ import respx
 from meo_mcp.config import Settings
 from meo_mcp.database import AccessTokenRecord, Base, Grant, make_session_factory
 from meo_mcp.main import create_app
-from meo_mcp.meo_api import MeoApi
+from meo_mcp.meo_api import MeoApi, MeoApiError
 from meo_mcp.security import TokenCipher, digest, now
 
 
@@ -159,6 +159,65 @@ async def test_phase1a_pet_and_health_tools_cross_asgi_boundary(tmp_path) -> Non
     assert results["vaccination"]["structuredContent"]["vaccination"]["vaccine_name"] == "Rabies"
     assert results["record"]["structuredContent"]["medical_record"]["record_type"] == "checkup"
     assert results["overview"]["structuredContent"]["pets"][0]["name"] == "Miso"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_list_vaccinations_overdue_passthrough_and_invalid_status(tmp_path) -> None:
+    app, engine, settings = await _app_with_token(tmp_path, ["health:read"])
+    overdue_envelope = {
+        "data": {
+            "data": [
+                {
+                    "id": 3,
+                    "vaccine_name": "Rabies",
+                    "administered_at": "2025-07-01",
+                    "due_at": "2026-07-01",
+                    "notes": None,
+                    "completed_at": None,
+                    "is_overdue": True,
+                    "photo_url": None,
+                    "updated_at": "2026-07-01T00:00:00Z",
+                    "secret": "omit",
+                }
+            ],
+            "meta": {"current_page": 1, "last_page": 1, "per_page": 25, "total": 1},
+        }
+    }
+    with respx.mock:
+        route = respx.get("https://app.example.com/api/pets/7/vaccinations").mock(
+            return_value=httpx.Response(200, json=overdue_envelope)
+        )
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app), base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            overdue = await _call(client, "list_vaccinations", {"pet_id": 7, "status": "overdue"})
+
+    assert overdue["isError"] is False
+    vaccination = overdue["structuredContent"]["vaccinations"][0]
+    assert vaccination == {
+        "id": 3,
+        "vaccine_name": "Rabies",
+        "administered_at": "2025-07-01",
+        "due_at": "2026-07-01",
+        "notes": None,
+        "completed_at": None,
+        "is_overdue": True,
+        "photo_url": None,
+        "photo": None,
+        "version": "2026-07-01T00:00:00Z",
+    }
+    assert "secret" not in vaccination
+    assert route.calls[0].request.url.params["status"] == "overdue"
+
+    api = MeoApi(make_session_factory(f"sqlite+aiosqlite:///{tmp_path / 'api.db'}")[1], settings)
+    with pytest.raises(MeoApiError) as exc_info:
+        await api.list_vaccinations(7, status="expired")
+    assert exc_info.value.payload["code"] == "validation_error"
+    assert "overdue" in exc_info.value.payload["message"]
     await engine.dispose()
 
 

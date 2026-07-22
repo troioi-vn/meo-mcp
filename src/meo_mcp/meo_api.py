@@ -169,8 +169,12 @@ class MeoApi:
     async def list_vaccinations(
         self, pet_id: int, page: int = 1, status: str = "active"
     ) -> dict[str, Any]:
-        if status not in {"active", "completed", "all"}:
-            self._error("validation_error", "status must be active, completed, or all.", False)
+        if status not in {"active", "overdue", "completed", "all"}:
+            self._error(
+                "validation_error",
+                "status must be active, overdue, completed, or all.",
+                False,
+            )
         return await self._health_list(
             pet_id,
             page,
@@ -5702,6 +5706,7 @@ class MeoApi:
                 "due_at",
                 "notes",
                 "completed_at",
+                "is_overdue",
                 "photo_url",
                 "updated_at",
             )
