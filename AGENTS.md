@@ -117,6 +117,7 @@ resource metadata. After a client completes OAuth, smoke with `list_pets`.
 | `docs/errors.md` | Stable HTTP, OAuth, and MCP tool error contracts |
 | `docs/clients.md` | Client connection and OAuth acceptance guide |
 | `docs/tools.md` | Canonical capability, scope, schema, annotation, and risk matrix |
+| `docs/development.md` | Local contributor setup and validation |
 | `docs/deployment.md` | Public-safe deploy model |
 | `docs/release.md` | Versioning, validation, dev acceptance, production promotion, and release publication |
 | `todo/` | Active milestone plans; move finished ones to `todo/done/` |

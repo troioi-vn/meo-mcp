@@ -30,15 +30,15 @@ defined by this repository. The gateway's canonical tool list is
 
 These neighboring instruction surfaces have different jobs:
 
-- [`AGENTS.md`](../AGENTS.md) contains always-on engineering rules for this
-  gateway repository: authority boundaries, branch policy, validation, and
-  documentation hygiene.
-- [`.agents/skills/meo-mcp/SKILL.md`](../.agents/skills/meo-mcp/SKILL.md) is the
-  reusable, opt-in workflow for connecting, operating, and extending the
-  gateway across supported agent clients.
-- The sibling `meo-mai-moi-skill` teaches agents Meo product-domain workflows.
-  Product knowledge stays there instead of being copied into this gateway's
-  engineering skill or documentation.
+- The public [Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill)
+  is the opt-in, consumer-facing workflow for connecting and using this OAuth
+  gateway across SKILL.md-compatible agents.
+- The [Meo Mai Moi REST API skill](https://github.com/troioi-vn/meo-mai-moi-skill)
+  is a separate direct-API/PAT integration path. Do not substitute a personal
+  API token for MCP OAuth.
+- [`AGENTS.md`](../AGENTS.md) and the in-repository
+  [gateway skill](../.agents/skills/meo-mcp/SKILL.md) are maintainer-facing
+  engineering guidance, not installation instructions for end users.
 
 ## Codex CLI, app, and IDE extension
 

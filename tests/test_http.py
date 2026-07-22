@@ -42,6 +42,32 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_public_root_is_a_plain_text_agent_landing_page() -> None:
+    key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
+    app = create_app(
+        Settings(
+            database_url="sqlite+aiosqlite:///ignored.db",
+            token_encryption_key=key,
+            meo_connector_hmac_secret="hmac",
+            meo_connector_api_key="key",
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url=str(app.state.settings.public_base_url),
+    ) as client:
+        response = await client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert response.headers["cache-control"] == "public, max-age=300"
+    assert "Pet management for nerds" in response.text
+    assert f"{app.state.settings.resource}" in response.text
+    assert "https://github.com/troioi-vn/meo-mcp-skill" in response.text
+
+
+@pytest.mark.asyncio
 async def test_request_log_is_structured_and_omits_query_values(caplog) -> None:
     key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
     app = create_app(
