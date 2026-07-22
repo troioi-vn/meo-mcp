@@ -413,6 +413,23 @@ async def test_token_endpoint_enforces_pkce_redirect_and_resource(tmp_path) -> N
             "/token", data={**form, "code_verifier": "incorrect-verifier"}
         )
         accepted = await client.post("/token", data=form)
+        wrong_refresh_resource = await client.post(
+            "/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": accepted.json()["refresh_token"],
+                "client_id": client_info.client_id,
+                "resource": "https://other.example.test/mcp",
+            },
+        )
+        refreshed_without_resource = await client.post(
+            "/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": accepted.json()["refresh_token"],
+                "client_id": client_info.client_id,
+            },
+        )
         replay = await client.post("/token", data=form)
 
     assert wrong_resource.json()["error"] == "invalid_target"
@@ -421,6 +438,9 @@ async def test_token_endpoint_enforces_pkce_redirect_and_resource(tmp_path) -> N
     assert wrong_verifier.json()["error"] == "invalid_grant", wrong_verifier.text
     assert accepted.status_code == 200
     assert accepted.json()["expires_in"] == 3600
+    assert wrong_refresh_resource.json()["error"] == "invalid_target"
+    assert refreshed_without_resource.status_code == 200
+    assert refreshed_without_resource.json()["refresh_token"] != accepted.json()["refresh_token"]
     assert replay.json()["error"] == "invalid_grant"
     await engine.dispose()
 
