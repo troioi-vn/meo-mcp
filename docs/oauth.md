@@ -78,8 +78,10 @@ Detailed behavior:
 6. The gateway exchanges the code, encrypts the delegated token, creates a
    grant, and sends a five-minute OAuth authorization code to the client's exact
    redirect URI.
-7. `/token` verifies the code, PKCE verifier, client, redirect, scope, and exact
-   `resource` parameter before issuing opaque MCP credentials.
+7. `/token` verifies the authorization-code exchange's PKCE verifier, client,
+   redirect, scope, and exact `resource` parameter before issuing opaque MCP
+   credentials. Refresh requests may omit `resource` and retain the refresh
+   token's already-bound MCP audience; if they supply it, it must be exact.
 
 ## Current scope mapping
 

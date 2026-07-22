@@ -135,7 +135,18 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 return error("request_too_large", "The request body exceeds 1 MiB.", 413)
             if request.url.path == "/token":
                 form = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
-                if form.get("resource") != [request.app.state.settings.resource]:
+                # RFC 6749 refresh requests do not need to repeat the RFC 8707
+                # resource indicator.  The refresh token is already bound to a
+                # single grant and this gateway issues tokens for one resource,
+                # so an omitted value safely inherits that audience.  Keep the
+                # exact match for authorization-code exchanges and for a
+                # refresh request that does name an audience.
+                refresh_without_resource = (
+                    form.get("grant_type") == ["refresh_token"] and "resource" not in form
+                )
+                if not refresh_without_resource and form.get("resource") != [
+                    request.app.state.settings.resource
+                ]:
                     return JSONResponse(
                         {
                             "error": "invalid_target",

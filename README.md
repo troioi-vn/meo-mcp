@@ -24,6 +24,7 @@ targets, fresh reads, concurrency checks, and post-write verification.
 | [Connect a client](docs/clients.md) | Generic setup plus Codex, Cursor, and MCP Inspector examples |
 | [Tool catalog](docs/tools.md) | Canonical scope, upstream endpoint, schema, annotation, and risk matrix |
 | [Deployment](docs/deployment.md) | Public-safe local, development, and production release mechanics |
+| [Release runbook](docs/release.md) | Version, validation, dev acceptance, production promotion, tag, and GitHub Release procedure |
 
 Repository-specific agent rules are in [AGENTS.md](AGENTS.md), and active work
 is sequenced in [todo/README.md](todo/README.md). Use the reusable

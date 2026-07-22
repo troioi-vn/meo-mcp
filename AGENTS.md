@@ -75,8 +75,9 @@ src/meo_mcp/
 - Routine work lands on **`dev`**. Pushing `dev` runs CI and deploys the development
   environment (operator-specific details are in the private runbook).
 - **`main`** deploys the distinct production environment only after an accepted
-  development checkpoint. See `docs/deployment.md`; live inventory remains in
-  the private operator runbook.
+  development checkpoint. Follow `docs/release.md`; reusable deployment
+  mechanics are in `docs/deployment.md`, while live inventory remains in the
+  private operator runbook.
 - Prefer additive Alembic migrations. Do not run destructive downgrades during incidents.
 
 ---
@@ -117,6 +118,7 @@ resource metadata. After a client completes OAuth, smoke with `list_pets`.
 | `docs/clients.md` | Client connection and OAuth acceptance guide |
 | `docs/tools.md` | Canonical capability, scope, schema, annotation, and risk matrix |
 | `docs/deployment.md` | Public-safe deploy model |
+| `docs/release.md` | Versioning, validation, dev acceptance, production promotion, and release publication |
 | `todo/` | Active milestone plans; move finished ones to `todo/done/` |
 | `.agents/skills/meo-mcp/SKILL.md` | Cross-client connect, smoke, diagnosis, deploy, and tool-development workflow |
 | private operator runbook | Live hosts, endpoints, secrets, CI; intentionally outside this repo |
