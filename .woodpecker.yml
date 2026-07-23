@@ -31,7 +31,7 @@ steps:
       - |
         start_epoch="$$(date -u +%s)"
         start_utc="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        commit_message_b64="$$(printf '%s\n' "${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
+        commit_message_b64="$$(printf '%s\n' "$${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
         printf '%s\n' "$$start_epoch" > .woodpecker-deploy-start-epoch
 
         curl -fsS -X POST \
@@ -78,7 +78,7 @@ steps:
       - |
         start_epoch="$$(date -u +%s)"
         start_utc="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        commit_message_b64="$$(printf '%s\n' "${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
+        commit_message_b64="$$(printf '%s\n' "$${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
         printf '%s\n' "$$start_epoch" > .woodpecker-deploy-start-epoch
 
         curl -fsS -X POST \
@@ -210,7 +210,7 @@ steps:
         finish_epoch="$$(date -u +%s)"
         finish_utc="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         start_epoch="$$(cat .woodpecker-deploy-start-epoch 2>/dev/null || true)"
-        commit_message_b64="$$(printf '%s\n' "${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
+        commit_message_b64="$$(printf '%s\n' "$${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
         if [ -n "$$start_epoch" ]; then duration_seconds=$$((finish_epoch - start_epoch)); else duration_seconds=null; fi
 
         curl -fsS -X POST \
@@ -260,7 +260,7 @@ steps:
         finish_epoch="$$(date -u +%s)"
         finish_utc="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         start_epoch="$$(cat .woodpecker-deploy-start-epoch 2>/dev/null || true)"
-        commit_message_b64="$$(printf '%s\n' "${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
+        commit_message_b64="$$(printf '%s\n' "$${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
         if [ -n "$$start_epoch" ]; then duration_seconds=$$((finish_epoch - start_epoch)); else duration_seconds=null; fi
 
         curl -fsS -X POST \
@@ -308,7 +308,7 @@ steps:
         finish_epoch="$$(date -u +%s)"
         finish_utc="$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         start_epoch="$$(cat .woodpecker-deploy-start-epoch 2>/dev/null || true)"
-        commit_message_b64="$$(printf '%s\n' "${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
+        commit_message_b64="$$(printf '%s\n' "$${CI_COMMIT_MESSAGE}" | head -n 1 | tr '\t' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | base64 | tr -d '\n')"
         if [ "${CI_COMMIT_BRANCH}" = "dev" ]; then
           target=catarchy2
           site=mcp-dev.meo-mai-moi.com

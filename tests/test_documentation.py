@@ -134,3 +134,10 @@ def test_public_documentation_has_no_private_inventory_markers() -> None:
                 leaks.append(f"{document.relative_to(ROOT)}: {label}")
 
     assert leaks == []
+
+
+def test_ci_commit_messages_are_read_from_runtime_environment() -> None:
+    workflow = (ROOT / ".woodpecker.yml").read_text()
+
+    assert '"${CI_COMMIT_MESSAGE}"' not in workflow
+    assert workflow.count('"$${CI_COMMIT_MESSAGE}"') == 5
