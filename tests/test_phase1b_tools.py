@@ -97,6 +97,7 @@ def _vaccination(version: str, notes: str = "first") -> dict:
             "administered_at": "2026-07-20",
             "due_at": "2027-07-20",
             "notes": notes,
+            "is_overdue": False,
             "updated_at": version,
         }
     }

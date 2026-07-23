@@ -40,6 +40,24 @@ These neighboring instruction surfaces have different jobs:
   [gateway skill](../.agents/skills/meo-mcp/SKILL.md) are maintainer-facing
   engineering guidance, not installation instructions for end users.
 
+## Scope presets
+
+Scope selection is task-driven. Prefer the narrowest grant that covers the
+intended work:
+
+- **Narrow task**: request only that domain's read or read/write pair.
+- **Everyday care** (default for an unqualified “connect Meo Mai Moi” /
+  “manage my pets” request):
+  `pets:read pets:write health:read health:write habits:read habits:write microchips:read microchips:write`.
+- **Full management**: all currently advertised scopes. Use only after an
+  explicit user choice, and warn first that it permits sensitive reads and
+  writes across finances, messages, sharing, placement, groups, profile, and
+  invitations. Never select it by inference.
+
+Scope upgrades remain additive by missing domain unless the user changes
+preset. The public [Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill)
+carries the agent-facing selection and recovery wording.
+
 ## Codex CLI, app, and IDE extension
 
 Codex clients on the same host share MCP configuration. Add and authenticate the
@@ -52,8 +70,9 @@ codex mcp list
 ```
 
 Request only `pets:read` when the client needs pet profiles but not health
-history. OAuth accepts either narrow scope or the documented combination, and
-each tool still enforces its own required scope.
+history. For a broad connect request, use the Everyday care scope set above.
+OAuth accepts either narrow scope or a documented combination, and each tool
+still enforces its own required scope.
 
 Placement, helper-profile, and messaging inspection use independent
 `placement:read`, `helpers:read`, and `messages:read` scopes. Message reads can
@@ -113,46 +132,57 @@ public [Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill)
 instructs an OpenClaw agent with execution access to perform this setup itself
 after the user explicitly asks it to connect or authorize Meo.
 
-For manual setup, save the unauthenticated server first, then start OAuth:
+Treat readiness as four distinct states: configured server entry, OAuth
+success, MCP probe success, and native tool projection in the current session.
+Do not collapse them.
+
+For manual setup, save the unauthenticated server first (Everyday care by
+default), then start OAuth:
 
 ```bash
 openclaw mcp add meo-mai-moi \
   --url <MCP_BASE_URL>/mcp \
   --transport streamable-http \
   --auth oauth \
-  --oauth-scope 'pets:read pets:write health:read health:write microchips:read microchips:write finance:read finance:write' \
+  --oauth-scope 'pets:read pets:write health:read health:write habits:read habits:write microchips:read microchips:write' \
   --no-probe
 openclaw mcp login meo-mai-moi
 ```
 
-That initial pet-management grant covers profile, health, microchip, and
-finance reads and writes. It is intentionally broader than a read-only smoke
-test and the consent screen remains the final approval boundary. For a named
-narrower task, replace it with only the relevant read/write pair.
+That Everyday care grant covers pet profiles, health, habits, and microchips.
+The consent screen remains the final approval boundary. For a named narrower
+task, replace it with only the relevant read/write pair. Full management
+requires an explicit choice and the sensitivity warning above.
 
-OpenClaw's headless OAuth flow prints an authorization URL and then accepts the
-short-lived code from the final browser redirect with
-`openclaw mcp login meo-mai-moi --code <code>`. A remote browser may fail to
-load the loopback `localhost:8989` page; copy only the `code` value from its
-address bar. Treat the URL and code as temporary credentials: use them only in
-the same private one-to-one session, exchange the code immediately, and never
-put either in groups, issues, screenshots, or logs. Use a local shell instead
-when the conversation is not private.
+OpenClaw's headless OAuth flow prints an authorization URL and then accepts a
+short-lived code with `openclaw mcp login meo-mai-moi --code <code>`. Prefer a
+local browser callback when available. In a private one-to-one channel, a human
+may paste a bare code, a `code&state=...` tail, or a full localhost callback
+URL; extract only the `code` parameter before exchange. Treat those values as
+temporary credentials: exchange immediately, never echo or log them, and never
+use them in groups, issues, or screenshots. Use a local shell when the
+conversation is not private. Never ask for access tokens, refresh tokens,
+client secrets, or stored OAuth files.
 
-Verify and activate the connection:
+Verify configuration, then start a fresh agent session before the first Meo
+call:
 
 ```bash
 openclaw mcp status --verbose
-openclaw mcp doctor meo-mai-moi --probe
+openclaw mcp probe meo-mai-moi
 openclaw mcp reload
 ```
 
-The complete Meo tool catalog remains visible; each tool still enforces its
-OAuth scope. A fresh agent message may be required after reload before the new
-tools are projected into the model runtime. If a later call reports
-`insufficient_scope`, add only the missing domain's read/write pair and repeat
-OAuth. See OpenClaw's [native MCP documentation](https://docs.openclaw.ai/cli/mcp)
-for current command details.
+`openclaw mcp probe` is the configuration and authentication check. `openclaw
+mcp reload` refreshes CLI/runtime configuration but does not retrofit native
+MCP tools into an already-created agent thread—ask the user for `/new` or
+`/reset`, then confirm with a native `list_pets` call. An empty or unrelated
+`tool_search` result is not proof that the Meo server lacks tools. If a later
+call reports `insufficient_scope`, add only the missing domain's read/write
+pair and repeat OAuth. Expired-code cases need a new login; projection failure
+after a successful probe needs a session reset, not another authorization. See
+OpenClaw's [native MCP documentation](https://docs.openclaw.ai/cli/mcp) for
+current command details.
 
 ## MCP Inspector
 
@@ -197,6 +227,8 @@ the scopes currently listed in [tools.md](tools.md).
 | `authorization_inactive` or upstream `401` | Reconnect to create a new delegated grant |
 | `upstream_rate_limited` / retryable `5xx` | Back off and retry later |
 | Tools do not refresh after a release | Restart/reload the client and run tool discovery again |
+| OpenClaw probe OK but tools missing in chat | Start a new session with `/new` or `/reset`; do not reauthorize |
+| OpenClaw expired authorization code | Start a new `mcp login`; never reuse the old code |
 
 Never paste access tokens, refresh tokens, authorization URLs, callback query
 strings, or full debug headers into issues or logs.

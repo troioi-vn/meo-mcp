@@ -87,6 +87,7 @@ def _vaccination(
     administered="2026-07-01",
     completed=None,
     photo=None,
+    is_overdue=False,
 ):
     return {
         "data": {
@@ -96,6 +97,7 @@ def _vaccination(
             "due_at": "2027-07-01T00:00:00.000000Z",
             "notes": None,
             "completed_at": completed,
+            "is_overdue": is_overdue,
             "photo_url": photo["url"] if photo else None,
             "photo": photo,
             "updated_at": version,

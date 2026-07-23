@@ -16,21 +16,15 @@ the private operator runbook only.
 
 ## Index
 
-No active roadmap plans remain.
+| Plan | Focus | Status |
+|------|-------|--------|
+| [07-openclaw-direct-mcp-call.md](07-openclaw-direct-mcp-call.md) | Upstream generic MCP tool-call command | Not started |
 
 ## Execution order
 
-Complete plans end-to-end in this order:
-
-1. `00-mvp-stabilization.md`
-2. `02-documentation.md`
-3. `03-agent-skill.md`
-4. `01-mcp-feature-coverage.md`, one phase at a time
-5. `04-prod-and-hardening.md`
-
-Do not begin a later plan merely because an earlier plan has partially landed.
-Meet its definition of done, update durable docs, move it to `todo/done/`, and
-verify the development client flow before continuing.
+Plan 07 is an upstream OpenClaw contribution and may proceed independently.
+Complete and archive each plan independently; an upstream review wait must not
+block Meo releases.
 
 ## Completed plans
 
@@ -41,3 +35,5 @@ verify the development client flow before continuing.
 | [03-agent-skill.md](done/03-agent-skill.md) | Cross-client connect, smoke, diagnosis, deploy, and tool-development workflow |
 | [01-mcp-feature-coverage.md](done/01-mcp-feature-coverage.md) | Full end-user MCP tool/scope coverage and durable exclusions |
 | [04-prod-and-hardening.md](done/04-prod-and-hardening.md) | Production cutover, auth policy, observability, write safety, and rollback acceptance |
+| [05-agent-authorization-ux.md](done/05-agent-authorization-ux.md) | Public skill and OpenClaw connection/OAuth UX |
+| [06-vaccination-overdue-semantics.md](done/06-vaccination-overdue-semantics.md) | Authoritative overdue-renewal filter and schema |

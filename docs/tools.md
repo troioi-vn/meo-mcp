@@ -25,7 +25,7 @@ part of the end-user tool surface.
 | `list_pet_types` | Live | List supported species and pet-care capability flags | `pets:read` | none; endpoint is public | `GET /api/pet-types` | Read | Low; public reference data |
 | `list_weights` | Live | List one pet's paginated weight history | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/weights` | Read | Moderate; pet health history |
 | `get_weight` | Live | Retrieve one explicit weight record | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/weights/{weight_id}` | Read | Moderate; pet health data |
-| `list_vaccinations` | Live | List one pet's paginated vaccination records, optionally by lifecycle status | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/vaccinations` | Read | Moderate; pet medical history |
+| `list_vaccinations` | Live | List one pet's paginated vaccination records, optionally by lifecycle status including authoritative overdue renewals | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/vaccinations` | Read | Moderate; pet medical history |
 | `get_vaccination` | Live | Retrieve one explicit vaccination record | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}` | Read | Moderate; pet medical data |
 | `list_medical_records` | Live | List one pet's paginated medical records, optionally by record type | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/medical-records` | Read | Moderate; sensitive pet medical history |
 | `get_medical_record` | Live | Retrieve one explicit medical record | `health:read` | `health:read` (legacy PAT: `read`) | `GET /api/pets/{pet_id}/medical-records/{record_id}` | Read | Moderate; sensitive pet medical data |
@@ -371,14 +371,18 @@ the positive record ID, and Meo verifies that the record belongs to that pet.
 ### Vaccinations
 
 - `list_vaccinations` input: `pet_id`, `page` (default `1`), and `status` enum
-  `active | completed | all` (default `active`).
+  `active | overdue | completed | all` (default `active`). Prefer
+  `status=overdue` when asking which incomplete renewals are past due.
+  `overdue` is a subset of `active`. Trust Meo's `is_overdue`; never infer
+  overdue from prose or the gateway host clock.
 - `list_vaccinations` output:
   `{ "vaccinations": Vaccination[], "pagination": Pagination }`.
 - `get_vaccination` input: `pet_id`, `vaccination_id`.
 - `get_vaccination` output: `{ "vaccination": Vaccination }`.
 - `Vaccination`: `id`, `vaccine_name`, ISO `administered_at`, nullable ISO
-  `due_at`, nullable `notes`, nullable ISO timestamp `completed_at`, and
-  nullable `photo_url`, and nullable ISO timestamp `version`.
+  `due_at`, nullable `notes`, nullable ISO timestamp `completed_at`, required
+  boolean `is_overdue`, nullable `photo_url`, and nullable ISO timestamp
+  `version`.
 
 ### Medical records
 
