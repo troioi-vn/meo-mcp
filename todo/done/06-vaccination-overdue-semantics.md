@@ -58,11 +58,11 @@ an administered vaccine is medically invalid.
 - [x] Run documented unit, feature, lint, formatting, and schema checks in both
       repositories
 - [x] Inspect changed public files for private infrastructure or credentials
-- [ ] Deploy/release Meo Mai Moi development first, then the gateway development
+- [x] Deploy/release Meo Mai Moi development first, then the gateway development
       branch, following each repository's normal workflow
-- [ ] Monitor both pipelines and logs, verify local/public health, and perform a
+- [x] Monitor both pipelines and logs, verify local/public health, and perform a
       real authenticated MCP call before production promotion
-- [ ] Promote each repository through its documented release process only after
+- [x] Promote each repository through its documented release process only after
       development acceptance; verify rollback remains non-destructive
 
 ## Test cases
