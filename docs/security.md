@@ -96,7 +96,8 @@ Structured logging redacts fields named for access/refresh tokens, API keys,
 authorization codes, delegated/Sanctum tokens, HMAC material, encryption keys,
 and common `*_secret` or `*_token` variants before rendering. Code should log
 only request IDs, safe endpoint identifiers, status, latency, and exception
-types—not raw headers, bodies, query strings, or credential-bearing free text.
+types. Never raw headers, bodies, query strings, or credential-bearing free
+text.
 
 Tool errors replace upstream bodies with gateway-owned messages and stable
 codes. This prevents internal or user-specific upstream detail from crossing

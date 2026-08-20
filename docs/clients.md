@@ -46,8 +46,8 @@ Scope selection is task-driven. Prefer the narrowest grant that covers the
 intended work:
 
 - **Narrow task**: request only that domain's read or read/write pair.
-- **Everyday care** (default for an unqualified “connect Meo Mai Moi” /
-  “manage my pets” request):
+- **Everyday care** (default for an unqualified "connect Meo Mai Moi" /
+  "manage my pets" request):
   `pets:read pets:write health:read health:write habits:read habits:write microchips:read microchips:write`.
 - **Full management**: all currently advertised scopes. Use only after an
   explicit user choice, and warn first that it permits sensitive reads and
@@ -84,8 +84,8 @@ Keep the read-only command above for ordinary inspection. Request
 `health:read`, only for an intended write workflow. Habits similarly pair
 `habits:read,habits:write`, and microchips pair
 `microchips:read,microchips:write`; pet-photo workflows use the pet pair. Write
-tools require stable IDs, idempotency keys, and—for updates, lifecycle actions,
-and deletes—the version returned by the matching read tool.
+tools require stable IDs and idempotency keys. Updates, lifecycle actions, and
+deletes also require the version returned by the matching read tool.
 
 Pet sharing pairs `sharing:read,sharing:write`. These high-impact tools require
 fresh sharing or invitation state plus exact expected pet, role, user, or
@@ -175,7 +175,7 @@ openclaw mcp reload
 
 `openclaw mcp probe` is the configuration and authentication check. `openclaw
 mcp reload` refreshes CLI/runtime configuration but does not retrofit native
-MCP tools into an already-created agent thread—ask the user for `/new` or
+MCP tools into an already-created agent thread. Ask the user for `/new` or
 `/reset`, then confirm with a native `list_pets` call. An empty or unrelated
 `tool_search` result is not proof that the Meo server lacks tools. If a later
 call reports `insufficient_scope`, add only the missing domain's read/write

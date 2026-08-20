@@ -534,8 +534,8 @@ The gateway then reads the target back, or verifies absence after a delete.
 ## Phase 2B pet sharing tools
 
 Sharing uses dedicated `sharing:read` and `sharing:write` scopes. The narrowed
-sharing endpoint—not the general pet profile endpoint—is the authority for
-collaborators and caller permissions. Outputs omit email addresses, historic
+sharing endpoint is the authority for collaborators and caller permissions, not
+the general pet profile endpoint. Outputs omit email addresses, historic
 relationships, creator IDs, and arbitrary upstream fields.
 
 - `PetSharing` contains `pet_id`, `pet_name`, nullable `version`, caller
@@ -918,7 +918,7 @@ authoritative `has_receipt` flag and transaction `version`.
 - `inspect_ledger_transaction_receipt(ledger_id, transaction_id)` downloads at
   most 10 MiB from Meo's authenticated receipt endpoint. Accepted content is
   JPEG, PNG, WebP, or PDF. Structured content contains only transaction ID,
-  presence, MIME type, byte size, SHA-256 digest, and version—never an
+  presence, MIME type, byte size, SHA-256 digest, and version. Never an
   authenticated URL, filename, or base64 body. Images are returned as one MCP
   `ImageContent`; PDFs as one MCP `EmbeddedResource` with a synthetic
   `meo-receipt:` URI and base64 blob. Absent receipts return stable structured

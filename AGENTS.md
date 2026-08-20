@@ -9,10 +9,10 @@ translate errors, never duplicate domain logic.
 
 Related trees:
 
-- `../meo-mai-moi` — main app (API authority, `/mcp-connect`, `/api/mcp-auth/*`)
-- `../meo-gpt-connector` — ChatGPT Actions connector (proven semantic tool shapes)
-- `../meo-mai-moi-skill` — product-domain skill for agents (do not duplicate here)
-- private operator runbook — live deploy inventory and verification; locate it
+- `../meo-mai-moi` is the main app (API authority, `/mcp-connect`, `/api/mcp-auth/*`)
+- `../meo-gpt-connector` is the ChatGPT Actions connector (proven semantic tool shapes)
+- `../meo-mai-moi-skill` is the product-domain skill for agents (do not duplicate here)
+- the private operator runbook holds live deploy inventory and verification; locate it
   through workstation-level instructions when available
 
 ---
@@ -57,7 +57,7 @@ src/meo_mcp/
 3. **Scopes stay narrow until needed.** Expand `ALLOWED_SCOPES` and Meo Sanctum abilities
    together; do not grant write scopes for unused tools.
 4. **Structured errors always.** Machine-readable shapes; no opaque free-text failures.
-5. **No secrets or tokens in logs.** Log `request_id`, endpoint, status, latency — never
+5. **No secrets or tokens in logs.** Log `request_id`, endpoint, status, and latency. Never
    PATs, MCP tokens, API keys, or HMAC secrets.
 6. **No secrets in Git.** Server `.env` is operator-managed. Prefer secret-manager resource
    *names* in private ops notes; never paste values into this repo.

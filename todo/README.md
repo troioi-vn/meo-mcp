@@ -11,7 +11,7 @@ the private operator runbook only.
 2. Keep plans concrete and phased; do not mix unrelated work.
 3. Update Status as work progresses (`not started` → `in progress` → `done`).
 4. Move completed plans to `todo/done/`.
-5. Do not put private hosts, checkout paths, CI IDs, or secrets here — point at
+5. Do not put private hosts, checkout paths, CI IDs, or secrets here. Point at
    the private operator runbook for those facts.
 
 ## Index
