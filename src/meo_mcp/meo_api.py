@@ -1031,6 +1031,32 @@ class MeoApi:
         payload = await self._get(delegated, f"/api/habits/{habit_id}/heatmap", params)
         return {"days": [self._habit_day_summary(item) for item in self._items(payload)]}
 
+    async def get_habit_pet_summary(
+        self, habit_id: int, weeks: int = 4, end_date: date | None = None
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        if isinstance(weeks, bool) or not isinstance(weeks, int) or not 1 <= weeks <= 104:
+            self._error("validation_error", "weeks must be between 1 and 104.", False)
+        delegated = await self._delegated_token("habits:read")
+        params: dict[str, Any] = {"weeks": weeks}
+        if end_date is not None:
+            params["end_date"] = end_date.isoformat()
+        payload = self._object(
+            await self._get(delegated, f"/api/habits/{habit_id}/pet-summary", params)
+        )
+        # `_items` unwraps a response envelope; this list is already nested
+        # inside one, so it is validated here the same way instead.
+        pets = payload.get("pets")
+        if not isinstance(pets, list) or any(not isinstance(item, dict) for item in pets):
+            self._error(
+                "upstream_malformed", "Meo Mai Moi returned malformed list data.", True, 200
+            )
+        return {
+            "start_date": payload.get("start_date"),
+            "end_date": payload.get("end_date"),
+            "pets": [self._habit_pet_summary(item) for item in pets],
+        }
+
     async def get_habit_day_entries(self, habit_id: int, entry_date: date) -> dict[str, Any]:
         self._positive(habit_id, "habit_id")
         delegated = await self._delegated_token("habits:read")
@@ -5655,6 +5681,18 @@ class MeoApi:
         if not isinstance(payload, dict):
             cls._error("upstream_malformed", "Meo Mai Moi returned malformed data.", True, 200)
         return payload.get("data", payload)
+
+    @classmethod
+    def _habit_pet_summary(cls, item: dict[str, Any]) -> dict[str, Any]:
+        # `pet_photo_url` is dropped: it answers nothing an agent asks of a
+        # per-pet habit rollup and costs a URL per pet.
+        return {
+            "pet_id": item.get("pet_id"),
+            "pet_name": item.get("pet_name"),
+            "last_yes_date": item.get("last_yes_date"),
+            "days_since_last_yes": item.get("days_since_last_yes"),
+            "series": item.get("series") if isinstance(item.get("series"), list) else [],
+        }
 
     @classmethod
     def _items(cls, payload: Any) -> list[dict[str, Any]]:

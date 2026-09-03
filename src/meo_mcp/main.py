@@ -833,6 +833,13 @@ def create_app(settings: Settings | None = None) -> Starlette:
         return await call(api.get_habit_heatmap, habit_id, weeks, end_date)
 
     @server.tool(annotations=read_annotations)
+    async def get_habit_pet_summary(
+        habit_id: int, weeks: int = 4, end_date: date | None = None
+    ) -> CallToolResult:
+        """Per-pet rollup for one habit: who is up to date and who has lapsed."""
+        return await call(api.get_habit_pet_summary, habit_id, weeks, end_date)
+
+    @server.tool(annotations=read_annotations)
     async def get_habit_day_entries(habit_id: int, entry_date: date) -> CallToolResult:
         """Read editable per-pet entries for an explicit habit date."""
         return await call(api.get_habit_day_entries, habit_id, entry_date)

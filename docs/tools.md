@@ -40,6 +40,7 @@ part of the end-user tool surface.
 | `list_habits` | Live | List habit trackers visible to the user | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits` | Read | Moderate; pet routines and reminder settings |
 | `get_habit` | Live | Retrieve one explicit habit and its editable version | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}` | Read | Moderate; pet routines and reminder settings |
 | `get_habit_heatmap` | Live | Summarize a bounded date range of habit completion/intensity | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/heatmap` | Read | Moderate; longitudinal care routine data |
+| `get_habit_pet_summary` | Live | Per-pet rollup of one habit: who is current and who has lapsed | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/pet-summary` | Read | Moderate; per-pet care adherence |
 | `get_habit_day_entries` | Live | Read per-pet values for one explicit habit date | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/entries/{date}` | Read | Moderate; per-pet routine data |
 | `create_habit` | Live | Create a tracker for explicit owned pet IDs | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `create`) | `POST /api/habits`; verification `GET /api/habits/{habit_id}` | Create | Moderate; creates reminders and routine tracking |
 | `update_habit` | Live | Update one explicit habit at a known version | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `update`) | `GET /api/habits/{habit_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites tracker configuration |
@@ -476,6 +477,12 @@ The gateway then reads the target back, or verifies absence after a delete.
   52), and optional ISO `end_date`. It returns daily rows containing only
   `date`, nullable `average_value`, nullable `display_value`, `entry_count`,
   `visible_pet_count`, and nullable `normalized_intensity`.
+- `get_habit_pet_summary` takes `habit_id`, `weeks` from 1 through 104, and
+  optional ISO `end_date`. It defaults to 4 weeks rather than Meo's 52: the
+  rollup answers "who has lapsed", and a numeric habit over a year multiplies a
+  per-day series by every visible pet. Rows carry `pet_id`, `pet_name`,
+  nullable `last_yes_date`, nullable `days_since_last_yes`, and `series`;
+  `pet_photo_url` is narrowed away.
 - `get_habit_day_entries` takes `habit_id` and a non-future ISO `entry_date`.
   It returns the narrowed habit plus rows containing `entry_id`, `pet_id`,
   `pet_name`, `pet_photo_url`, nullable `value_int`, `is_current_pet`, and

@@ -289,6 +289,7 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "list_habits",
         "get_habit",
         "get_habit_heatmap",
+        "get_habit_pet_summary",
         "get_habit_day_entries",
         "create_habit",
         "update_habit",
