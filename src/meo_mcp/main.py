@@ -8,13 +8,16 @@ import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
 import structlog
 import uvicorn
+from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
-from mcp.server.fastmcp import FastMCP
+from mcp.server.caching import CacheHint
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import (
     BlobResourceContents,
@@ -38,6 +41,14 @@ from .security import redact_log_event
 
 logger = structlog.get_logger()
 request_id_context: ContextVar[str] = ContextVar("request_id", default="unbound")
+# One number for the guard, the SDK transport, and nginx `client_max_body_size`.
+MAX_REQUEST_BODY_BYTES = 1_048_576
+try:
+    # `serverInfo` travels in every result's `_meta` under 2026-07-28, so an
+    # empty version would be what clients and logs record for this gateway.
+    SERVER_VERSION = package_version("meo-mcp")
+except PackageNotFoundError:  # pragma: no cover - only when run from a bare checkout
+    SERVER_VERSION = "0.0.0"
 
 LANDING_PAGE = """Meo Mai Moi MCP
 
@@ -160,10 +171,10 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 declared_length = int(raw_length) if raw_length is not None else None
             except ValueError:
                 return error("invalid_content_length", "Content-Length must be an integer.", 400)
-            if declared_length is not None and declared_length > 1_048_576:
+            if declared_length is not None and declared_length > MAX_REQUEST_BODY_BYTES:
                 return error("request_too_large", "The request body exceeds 1 MiB.", 413)
             body = await request.body()
-            if len(body) > 1_048_576:
+            if len(body) > MAX_REQUEST_BODY_BYTES:
                 return error("request_too_large", "The request body exceeds 1 MiB.", 413)
             if request.url.path == "/token":
                 form = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
@@ -227,8 +238,9 @@ def create_app(settings: Settings | None = None) -> Starlette:
     provider = DatabaseOAuthProvider(sessions, settings)
     api = MeoApi(sessions, settings)
     public_host = settings.public_base_url.host
-    server = FastMCP(
+    server = MCPServer(
         "Meo Mai Moi",
+        version=SERVER_VERSION,
         instructions=(
             "Read and safely update Meo Mai Moi pets, health history, habits, photos, "
             "microchips, pet sharing, placement opportunities, helper profiles, messages, "
@@ -246,13 +258,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
             ),
             revocation_options=RevocationOptions(enabled=True),
         ),
-        stateless_http=True,
-        json_response=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=[public_host, f"{public_host}:*"],
-            allowed_origins=settings.allowed_origins,
-        ),
+        # The catalog is the same for every caller and only changes on deploy,
+        # so a client may hold it for an hour. Keep the scope private: nothing
+        # here varies by grant, but a shared intermediary caching an authorized
+        # response buys us nothing worth reasoning about.
+        cache_hints={"tools/list": CacheHint(ttl_ms=3_600_000, scope="private")},
     )
 
     read_annotations = {
@@ -2610,7 +2620,19 @@ def create_app(settings: Settings | None = None) -> Starlette:
             Route("/.well-known/oauth-protected-resource", protected_resource),
             Route("/.well-known/oauth-protected-resource/mcp", protected_resource),
             Route("/oauth/meo/callback", meo_callback),
-            Mount("/", server.streamable_http_app()),
+            Mount(
+                "/",
+                server.streamable_http_app(
+                    json_response=True,
+                    stateless_http=True,
+                    max_request_body_size=MAX_REQUEST_BODY_BYTES,
+                    transport_security=TransportSecuritySettings(
+                        enable_dns_rebinding_protection=True,
+                        allowed_hosts=[public_host, f"{public_host}:*"],
+                        allowed_origins=settings.allowed_origins,
+                    ),
+                ),
+            ),
         ],
         lifespan=lifespan,
     )

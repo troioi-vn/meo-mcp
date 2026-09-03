@@ -8,7 +8,7 @@ Meo Mai Moi is the authority. This repo is a thin adapter: normalize inputs, nar
 
 ## Stack
 
-Python 3.12, `uv`, FastMCP + Starlette, uvicorn, SQLAlchemy async, Alembic, Postgres. Stateless Streamable HTTP (`json_response=True`) at `{PUBLIC_BASE_URL}/mcp`.
+Python 3.12, `uv`, MCP Python SDK v2 (`MCPServer`) + Starlette, uvicorn, SQLAlchemy async, Alembic, Postgres. Stateless Streamable HTTP (`json_response=True`) at `{PUBLIC_BASE_URL}/mcp`, serving protocol `2026-07-28` and every earlier revision from one deployment.
 
 Things you will otherwise reach for and get wrong:
 

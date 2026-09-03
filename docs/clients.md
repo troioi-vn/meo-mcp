@@ -4,7 +4,9 @@
 
 - The environment's public base URL, written below as `<MCP_BASE_URL>`.
 - A verified, non-banned Meo account.
-- An MCP client supporting remote Streamable HTTP and OAuth.
+- An MCP client supporting remote Streamable HTTP and OAuth. Any protocol
+  revision works: the gateway answers `2026-07-28` clients, which send a tool
+  call with no handshake, and pre-2026 clients, which open with `initialize`.
 
 Do not configure a bearer token manually. Point the client at
 `<MCP_BASE_URL>/mcp`; OAuth discovery supplies the authorization server and the
@@ -224,7 +226,8 @@ the scopes currently listed in [tools.md](tools.md).
 | Redirect or PKCE error | Remove stale registration/auth state and reconnect with a current OAuth-capable client |
 | `authorization_inactive` or upstream `401` | Reconnect to create a new delegated grant |
 | `upstream_rate_limited` / retryable `5xx` | Back off and retry later |
-| Tools do not refresh after a release | Restart/reload the client and run tool discovery again |
+| Tools do not refresh after a release | Restart/reload the client and run tool discovery again; a `2026-07-28` client may hold the catalog for up to an hour |
+| `-32020` header mismatch | A proxy in front of the client stripped or rewrote `Mcp-Protocol-Version`, `Mcp-Method`, or `Mcp-Name`. Under `2026-07-28` these must reach the gateway unmodified |
 | OpenClaw probe OK but tools missing in chat | Start a new session with `/new` or `/reset`; do not reauthorize |
 | OpenClaw expired authorization code | Start a new `mcp login`; never reuse the old code |
 
