@@ -37,6 +37,11 @@ part of the end-user tool surface.
 | `update_vaccination` | Live | Correct one explicit vaccination at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites pet medical data |
 | `add_medical_record` | Live | Record one dated medical event for an explicit pet | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/medical-records`; `GET /api/pets/{pet_id}/medical-records/{record_id}` | Create | Moderate; creates sensitive medical data |
 | `update_medical_record` | Live | Correct one explicit medical record at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/medical-records/{record_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites sensitive medical data |
+| `get_litter` | Live | Read one litter with the members the caller may see | `pets:read` | `pets:read` (legacy PAT: `read`) | `GET /api/litters/{litter_id}` | Read | Moderate; sibling grouping and member pets |
+| `create_litter` | Live | Create a litter and every member pet in one transaction | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `create`) | `POST /api/litters`; read-back verification | Create | High; creates several pets at once, and Meo names any member left unnamed |
+| `rename_litter` | Live | Rename an exact litter after a name and version preview | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | litter read; `PUT /api/litters/{litter_id}`; verification | Update | Low; label only |
+| `separate_pet_from_litter` | Live | Detach one pet from a litter, keeping the pet | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | litter read; `DELETE /api/litters/{litter_id}/members/{pet_id}`; membership verification | Update | Moderate; the litter dissolves when fewer than two members remain |
+| `split_up_litter` | Live | Dissolve a litter, detaching every member | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `delete`) | litter read; `POST /api/litters/{litter_id}/split-up`; absence verification | Delete | Moderate; removes the grouping, never a pet |
 | `list_habits` | Live | List habit trackers visible to the user | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits` | Read | Moderate; pet routines and reminder settings |
 | `get_habit` | Live | Retrieve one explicit habit and its editable version | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}` | Read | Moderate; pet routines and reminder settings |
 | `get_habit_heatmap` | Live | Summarize a bounded date range of habit completion/intensity | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/heatmap` | Read | Moderate; longitudinal care routine data |
@@ -477,6 +482,18 @@ The gateway then reads the target back, or verifies absence after a delete.
   52), and optional ISO `end_date`. It returns daily rows containing only
   `date`, nullable `average_value`, nullable `display_value`, `entry_count`,
   `visible_pet_count`, and nullable `normalized_intensity`.
+- Litter tools narrow a litter to `litter_id`, `name`, `species`,
+  `member_count`, `members` as pet summaries, and `version`. `member_count` is
+  what the caller may see, not the litter's true size, because Meo filters
+  members by visibility. `create_litter` requires `pet_type_id`, a two-letter
+  `country`, and `members`; Meo owns the litter size bounds and publishes them
+  as `litter_min_members` / `litter_max_members` on `/api/settings/public`, so
+  they are not repeated here. `split_up_litter` sends no `base_version`
+  because upstream runs no version check on that route; the exact expected
+  name pins the target instead. Neither `separate_pet_from_litter` nor
+  `split_up_litter` deletes a pet.
+- Pet summaries carry `litter` as `{litter_id, name}`, or `null` for a pet in
+  no litter. Without it an agent cannot tell that two pets are littermates.
 - `get_habit_pet_summary` takes `habit_id`, `weeks` from 1 through 104, and
   optional ISO `end_date`. It defaults to 4 weeks rather than Meo's 52: the
   rollup answers "who has lapsed", and a numeric habit over a year multiplies a

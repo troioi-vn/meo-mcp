@@ -1031,6 +1031,143 @@ class MeoApi:
         payload = await self._get(delegated, f"/api/habits/{habit_id}/heatmap", params)
         return {"days": [self._habit_day_summary(item) for item in self._items(payload)]}
 
+    async def create_litter(
+        self,
+        pet_type_id: int,
+        country: str,
+        members: list[dict[str, Any]],
+        idempotency_key: str,
+        name: str | None = None,
+        description: str | None = None,
+        state: str | None = None,
+        city_id: int | None = None,
+        birthday: str | None = None,
+        birthday_precision: str | None = None,
+        group_id: int | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_type_id, "pet_type_id")
+        if not isinstance(members, list) or not members:
+            self._error("validation_error", "members must list at least one pet.", False)
+        body: dict[str, Any] = {
+            "pet_type_id": pet_type_id,
+            "country": self._country(country),
+            # Meo owns the litter size bounds and reports them on
+            # /api/settings/public; duplicating them here would drift.
+            "members": members,
+            "name": self._optional_text(name, "name", 255),
+            "description": self._optional_text(description, "description"),
+            "state": self._optional_text(state, "state", 255),
+            "birthday": self._optional_text(birthday, "birthday", 32),
+            "birthday_precision": self._optional_text(birthday_precision, "birthday_precision", 16),
+        }
+        if city_id is not None:
+            self._positive(city_id, "city_id")
+            body["city_id"] = city_id
+        if group_id is not None:
+            self._positive(group_id, "group_id")
+            body["group_id"] = group_id
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/litters",
+            json_data=body,
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        created = self._litter(self._object(payload))
+        litter_id = created.get("litter_id")
+        self._positive(litter_id, "litter_id")
+        after = await self._verify(self.get_litter, litter_id)
+        return {"litter": after["litter"], "verified": True}
+
+    async def get_litter(self, litter_id: int) -> dict[str, Any]:
+        self._positive(litter_id, "litter_id")
+        delegated = await self._delegated_token("pets:read")
+        payload = await self._get(delegated, f"/api/litters/{litter_id}")
+        return {"litter": self._litter(self._object(payload))}
+
+    async def rename_litter(
+        self,
+        litter_id: int,
+        name: str,
+        expected_current_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        current = await self._checked_litter(litter_id, expected_current_name)
+        new_name = self._required_text(name, "name", 255)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/litters/{litter_id}",
+            json_data={"name": new_name, "base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200},
+        )
+        after = await self._verify(self.get_litter, litter_id)
+        if after["litter"].get("name") != new_name:
+            self._verification_error("The litter name did not change.")
+        del current
+        return {"litter": after["litter"], "verified": True}
+
+    async def separate_pet_from_litter(
+        self,
+        litter_id: int,
+        pet_id: int,
+        expected_litter_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        await self._checked_litter(litter_id, expected_litter_name)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/litters/{litter_id}/members/{pet_id}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        # No pet is ever deleted here, but the litter itself dissolves when
+        # fewer than two members remain, so absence is a valid outcome.
+        try:
+            after = await self.get_litter(litter_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") in {"upstream_not_found", "upstream_forbidden"}:
+                return {"litter": None, "litter_dissolved": True, "verified": True}
+            raise
+        if any(member.get("id") == pet_id for member in after["litter"].get("members", [])):
+            self._verification_error("The pet is still a member of the litter.")
+        return {"litter": after["litter"], "litter_dissolved": False, "verified": True}
+
+    async def split_up_litter(
+        self, litter_id: int, expected_litter_name: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        # Upstream runs no version check on this route, so none is invented
+        # here; the exact expected name is what pins the target instead.
+        await self._checked_litter(litter_id, expected_litter_name)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/litters/{litter_id}/split-up",
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        await self._verify_absent(self.get_litter, litter_id)
+        return {"litter_id": litter_id, "split_up": True, "verified": True}
+
+    async def _checked_litter(self, litter_id: int, expected_name: str) -> dict[str, Any]:
+        self._positive(litter_id, "litter_id")
+        expected = self._required_text(expected_name, "expected_litter_name", 255)
+        current = await self.get_litter(litter_id)
+        if current["litter"].get("name") != expected:
+            self._error("target_mismatch", "The litter name does not match.", False)
+        return current
+
     async def get_habit_pet_summary(
         self, habit_id: int, weeks: int = 4, end_date: date | None = None
     ) -> dict[str, Any]:
@@ -5683,6 +5820,26 @@ class MeoApi:
         return payload.get("data", payload)
 
     @classmethod
+    def _litter(cls, item: dict[str, Any]) -> dict[str, Any]:
+        pets = item.get("pets")
+        members = (
+            [cls._pet_summary(pet) for pet in pets if isinstance(pet, dict)]
+            if isinstance(pets, list)
+            else []
+        )
+        pet_type = item.get("pet_type") or item.get("petType")
+        return {
+            "litter_id": item.get("id"),
+            "name": item.get("name"),
+            "species": pet_type.get("name") if isinstance(pet_type, dict) else None,
+            # Members are already filtered to what the caller may view, so this
+            # is the visible count rather than the litter's true size.
+            "member_count": len(members),
+            "members": members,
+            "version": item.get("updated_at"),
+        }
+
+    @classmethod
     def _habit_pet_summary(cls, item: dict[str, Any]) -> dict[str, Any]:
         # `pet_photo_url` is dropped: it answers nothing an agent asks of a
         # per-pet habit rollup and costs a URL per pet.
@@ -5741,6 +5898,11 @@ class MeoApi:
             except ValueError:
                 age = None
         pet_type = pet.get("pet_type")
+        # Meo eager-loads `litter:id,name` on pet payloads. Narrowing it away
+        # left an agent unable to see that a pet is a littermate at all, so it
+        # could neither answer "are these siblings" nor find the litter to act
+        # on. `None` for a pet that belongs to no litter.
+        litter = pet.get("litter")
         return {
             "id": pet.get("id"),
             "name": pet.get("name"),
@@ -5748,6 +5910,11 @@ class MeoApi:
             "sex": pet.get("sex"),
             "age": age,
             "photo_url": pet.get("photo_url"),
+            "litter": (
+                {"litter_id": litter.get("id"), "name": litter.get("name")}
+                if isinstance(litter, dict)
+                else None
+            ),
         }
 
     # Compatibility alias retained for callers of the original MVP normalizer.

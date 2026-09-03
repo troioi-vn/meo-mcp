@@ -286,6 +286,11 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "delete_medical_record",
         "upload_medical_record_photo_from_url",
         "delete_medical_record_photo",
+        "get_litter",
+        "create_litter",
+        "rename_litter",
+        "separate_pet_from_litter",
+        "split_up_litter",
         "list_habits",
         "get_habit",
         "get_habit_heatmap",
@@ -461,6 +466,7 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
                 "sex": "female",
                 "age": None,
                 "photo_url": None,
+                "litter": None,
             }
         ]
     }
