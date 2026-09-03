@@ -272,3 +272,43 @@ async def test_overview_keeps_partial_health_results_and_sorts(tmp_path) -> None
     assert by_id[2]["vaccination_data_status"] == "available"
     assert by_id[1]["vaccination_data_status"] == "unavailable"
     assert by_id[2]["recent_weights"] == [{"id": 9}]
+
+
+@pytest.mark.asyncio
+async def test_list_pets_reports_litter_membership(tmp_path) -> None:
+    """Meo eager-loads `litter:id,name` on pet payloads.
+
+    Narrowing it away left an agent unable to tell that two pets are
+    littermates, or to find the litter to act on, so it survives narrowing.
+    """
+    app, engine, settings = await _app_with_token(tmp_path, ["pets:read"])
+    with respx.mock:
+        respx.get("https://app.example.com/api/my-pets").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {
+                            "id": 7,
+                            "name": "Miso",
+                            "pet_type": {"name": "Cat"},
+                            "litter": {"id": 3, "name": "Spring 2026"},
+                        },
+                        {"id": 8, "name": "Pepper", "pet_type": {"name": "Cat"}},
+                    ]
+                },
+            )
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport, base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            result = await _call(client, "list_pets", {})
+
+    pets = result["structuredContent"]["pets"]
+    assert pets[0]["litter"] == {"litter_id": 3, "name": "Spring 2026"}
+    assert pets[1]["litter"] is None
+    await engine.dispose()

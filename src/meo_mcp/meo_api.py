@@ -1031,6 +1031,270 @@ class MeoApi:
         payload = await self._get(delegated, f"/api/habits/{habit_id}/heatmap", params)
         return {"days": [self._habit_day_summary(item) for item in self._items(payload)]}
 
+    async def list_placement_questions(self, placement_request_id: int) -> dict[str, Any]:
+        self._positive(placement_request_id, "placement_request_id")
+        delegated = await self._delegated_token("placement:read")
+        payload = await self._get(
+            delegated, f"/api/placement-requests/{placement_request_id}/questions"
+        )
+        return {
+            "questions": [self._placement_question(item) for item in self._items(payload)],
+        }
+
+    async def ask_placement_question(
+        self,
+        placement_request_id: int,
+        asker_name: str,
+        question: str,
+        asker_email: str | None = None,
+    ) -> dict[str, Any]:
+        # Upstream runs no idempotency middleware on this route, so no key is
+        # accepted here: offering one would imply replay protection Meo does
+        # not provide. Meo's proof-of-work guard applies to anonymous askers
+        # only, so an authorized caller sends no `altcha` at all.
+        self._positive(placement_request_id, "placement_request_id")
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-requests/{placement_request_id}/questions",
+            json_data={
+                "asker_name": self._required_text(asker_name, "asker_name", 80),
+                "question": self._required_text(question, "question", 1000),
+                "asker_email": self._optional_text(asker_email, "asker_email", 255),
+            },
+            expected_statuses={200, 201},
+        )
+        return {"question": self._placement_question(self._object(payload)), "verified": True}
+
+    async def _placement_question_action(
+        self,
+        question_id: int,
+        action: str,
+        idempotency_key: str,
+        expected_status: str | None,
+        json_data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self._positive(question_id, "question_id")
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-questions/{question_id}/{action}",
+            json_data=json_data or {},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200},
+        )
+        question = self._placement_question(self._object(payload))
+        if expected_status is not None and question.get("status") != expected_status:
+            self._verification_error(f"The question is not {expected_status} after the change.")
+        return {"question": question, "verified": True}
+
+    async def answer_placement_question(
+        self, question_id: int, answer: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        # Answering is what publishes a question; there is no separate step.
+        return await self._placement_question_action(
+            question_id,
+            "answer",
+            idempotency_key,
+            "published",
+            {"answer": self._required_text(answer, "answer", 2000)},
+        )
+
+    async def approve_placement_question(
+        self, question_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._placement_question_action(
+            question_id, "approve", idempotency_key, "published"
+        )
+
+    async def hide_placement_question(
+        self, question_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._placement_question_action(question_id, "hide", idempotency_key, "hidden")
+
+    async def unhide_placement_question(
+        self, question_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._placement_question_action(question_id, "unhide", idempotency_key, None)
+
+    async def translate_placement_question(self, question_id: int) -> dict[str, Any]:
+        # Only an already published, answered pair can be translated, and the
+        # route carries no idempotency middleware.
+        self._positive(question_id, "question_id")
+        delegated = await self._delegated_token("placement:read")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-questions/{question_id}/translate",
+            expected_statuses={200},
+        )
+        return {"question": self._placement_question(self._object(payload))}
+
+    async def create_litter(
+        self,
+        pet_type_id: int,
+        country: str,
+        members: list[dict[str, Any]],
+        idempotency_key: str,
+        name: str | None = None,
+        description: str | None = None,
+        state: str | None = None,
+        city_id: int | None = None,
+        birthday: str | None = None,
+        birthday_precision: str | None = None,
+        group_id: int | None = None,
+    ) -> dict[str, Any]:
+        self._positive(pet_type_id, "pet_type_id")
+        if not isinstance(members, list) or not members:
+            self._error("validation_error", "members must list at least one pet.", False)
+        body: dict[str, Any] = {
+            "pet_type_id": pet_type_id,
+            "country": self._country(country),
+            # Meo owns the litter size bounds and reports them on
+            # /api/settings/public; duplicating them here would drift.
+            "members": members,
+            "name": self._optional_text(name, "name", 255),
+            "description": self._optional_text(description, "description"),
+            "state": self._optional_text(state, "state", 255),
+            "birthday": self._optional_text(birthday, "birthday", 32),
+            "birthday_precision": self._optional_text(birthday_precision, "birthday_precision", 16),
+        }
+        if city_id is not None:
+            self._positive(city_id, "city_id")
+            body["city_id"] = city_id
+        if group_id is not None:
+            self._positive(group_id, "group_id")
+            body["group_id"] = group_id
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            "/api/litters",
+            json_data=body,
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={201},
+        )
+        created = self._litter(self._object(payload))
+        litter_id = created.get("litter_id")
+        self._positive(litter_id, "litter_id")
+        after = await self._verify(self.get_litter, litter_id)
+        return {"litter": after["litter"], "verified": True}
+
+    async def get_litter(self, litter_id: int) -> dict[str, Any]:
+        self._positive(litter_id, "litter_id")
+        delegated = await self._delegated_token("pets:read")
+        payload = await self._get(delegated, f"/api/litters/{litter_id}")
+        return {"litter": self._litter(self._object(payload))}
+
+    async def rename_litter(
+        self,
+        litter_id: int,
+        name: str,
+        expected_current_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        current = await self._checked_litter(litter_id, expected_current_name)
+        new_name = self._required_text(name, "name", 255)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "PUT",
+            f"/api/litters/{litter_id}",
+            json_data={"name": new_name, "base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200},
+        )
+        after = await self._verify(self.get_litter, litter_id)
+        if after["litter"].get("name") != new_name:
+            self._verification_error("The litter name did not change.")
+        del current
+        return {"litter": after["litter"], "verified": True}
+
+    async def separate_pet_from_litter(
+        self,
+        litter_id: int,
+        pet_id: int,
+        expected_litter_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        self._positive(pet_id, "pet_id")
+        await self._checked_litter(litter_id, expected_litter_name)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "DELETE",
+            f"/api/litters/{litter_id}/members/{pet_id}",
+            json_data={"base_version": self._version(base_version)},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        # No pet is ever deleted here, but the litter itself dissolves when
+        # fewer than two members remain, so absence is a valid outcome.
+        try:
+            after = await self.get_litter(litter_id)
+        except MeoApiError as exc:
+            if exc.payload.get("code") in {"upstream_not_found", "upstream_forbidden"}:
+                return {"litter": None, "litter_dissolved": True, "verified": True}
+            raise
+        if any(member.get("id") == pet_id for member in after["litter"].get("members", [])):
+            self._verification_error("The pet is still a member of the litter.")
+        return {"litter": after["litter"], "litter_dissolved": False, "verified": True}
+
+    async def split_up_litter(
+        self, litter_id: int, expected_litter_name: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        # Upstream runs no version check on this route, so none is invented
+        # here; the exact expected name is what pins the target instead.
+        await self._checked_litter(litter_id, expected_litter_name)
+        delegated = await self._delegated_token("pets:read", "pets:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/litters/{litter_id}/split-up",
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={204},
+        )
+        await self._verify_absent(self.get_litter, litter_id)
+        return {"litter_id": litter_id, "split_up": True, "verified": True}
+
+    async def _checked_litter(self, litter_id: int, expected_name: str) -> dict[str, Any]:
+        self._positive(litter_id, "litter_id")
+        expected = self._required_text(expected_name, "expected_litter_name", 255)
+        current = await self.get_litter(litter_id)
+        if current["litter"].get("name") != expected:
+            self._error("target_mismatch", "The litter name does not match.", False)
+        return current
+
+    async def get_habit_pet_summary(
+        self, habit_id: int, weeks: int = 4, end_date: date | None = None
+    ) -> dict[str, Any]:
+        self._positive(habit_id, "habit_id")
+        if isinstance(weeks, bool) or not isinstance(weeks, int) or not 1 <= weeks <= 104:
+            self._error("validation_error", "weeks must be between 1 and 104.", False)
+        delegated = await self._delegated_token("habits:read")
+        params: dict[str, Any] = {"weeks": weeks}
+        if end_date is not None:
+            params["end_date"] = end_date.isoformat()
+        payload = self._object(
+            await self._get(delegated, f"/api/habits/{habit_id}/pet-summary", params)
+        )
+        # `_items` unwraps a response envelope; this list is already nested
+        # inside one, so it is validated here the same way instead.
+        pets = payload.get("pets")
+        if not isinstance(pets, list) or any(not isinstance(item, dict) for item in pets):
+            self._error(
+                "upstream_malformed", "Meo Mai Moi returned malformed list data.", True, 200
+            )
+        return {
+            "start_date": payload.get("start_date"),
+            "end_date": payload.get("end_date"),
+            "pets": [self._habit_pet_summary(item) for item in pets],
+        }
+
     async def get_habit_day_entries(self, habit_id: int, entry_date: date) -> dict[str, Any]:
         self._positive(habit_id, "habit_id")
         delegated = await self._delegated_token("habits:read")
@@ -3958,31 +4222,110 @@ class MeoApi:
             raise
         self._verification_error("The placement request still exists after deletion.")
 
+    async def _placement_lifecycle_action(
+        self,
+        action: str,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+        expected_status: str,
+    ) -> dict[str, Any]:
+        await self._checked_placement(placement_request_id, expected_pet_id, expected_pet_name)
+        version, key = self._version(base_version), self._idempotency_key(idempotency_key)
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-requests/{placement_request_id}/{action}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200},
+        )
+        after = await self._verify(self.get_placement_request, placement_request_id)
+        if after["placement_request"].get("status") != expected_status:
+            self._verification_error(
+                f"The placement request is not {expected_status} after the change."
+            )
+        return {"placement_request": after["placement_request"], "verified": True}
+
+    async def cancel_placement_request(
+        self,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        # Upstream calls this endpoint `reject`, but it cancels the listing.
+        # Meo also rejects every outstanding response and notifies those
+        # helpers, so this is not a quiet state change.
+        return await self._placement_lifecycle_action(
+            "reject",
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+            "cancelled",
+        )
+
+    async def reopen_placement_request(
+        self,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        # Upstream calls this endpoint `confirm`; it re-opens a cancelled or
+        # expired listing and clears an elapsed expiry.
+        return await self._placement_lifecycle_action(
+            "confirm",
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+            "open",
+        )
+
     async def respond_to_placement_request(
         self,
         placement_request_id: int,
-        helper_profile_id: int,
         expected_pet_name: str,
         idempotency_key: str,
+        helper_profile_id: int | None = None,
         message: str | None = None,
+        phone_number: str | None = None,
     ) -> dict[str, Any]:
         current = await self.get_placement_request(placement_request_id)
         if current["placement_request"].get("pet", {}).get("pet_name") != self._required_text(
             expected_pet_name, "expected_pet_name", 255
         ):
             self._error("target_mismatch", "The placement request pet does not match.", False)
-        profile = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
-        if profile.get("helper_profile_id") != helper_profile_id:
-            self._error("target_mismatch", "The helper profile does not match.", False)
-        delegated = await self._delegated_token("placement:read", "placement:write", "helpers:read")
+        # Meo made the profile optional: adoption and free fostering resolve the
+        # caller's active profile, or create one, when none is named.  Naming a
+        # profile is still an exact target, so it keeps its own verification --
+        # and only that path needs to read helper profiles at all.
+        scopes = ["placement:read", "placement:write"]
+        body: dict[str, Any] = {"message": self._optional_text(message, "message")}
+        if helper_profile_id is not None:
+            self._positive(helper_profile_id, "helper_profile_id")
+            profile = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
+            if profile.get("helper_profile_id") != helper_profile_id:
+                self._error("target_mismatch", "The helper profile does not match.", False)
+            scopes.append("helpers:read")
+            body["helper_profile_id"] = helper_profile_id
+        if phone_number is not None:
+            body["phone_number"] = self._optional_text(phone_number, "phone_number", 20)
+        delegated = await self._delegated_token(*scopes)
         payload = await self._request(
             delegated,
             "POST",
             f"/api/placement-requests/{placement_request_id}/responses",
-            json_data={
-                "helper_profile_id": helper_profile_id,
-                "message": self._optional_text(message, "message"),
-            },
+            json_data=body,
             idempotency_key=self._idempotency_key(idempotency_key),
             expected_statuses={201},
         )
@@ -5578,6 +5921,68 @@ class MeoApi:
         return payload.get("data", payload)
 
     @classmethod
+    def _placement_question(cls, item: dict[str, Any]) -> dict[str, Any]:
+        narrowed = {
+            "question_id": item.get("id"),
+            "pet_id": item.get("pet_id"),
+            "placement_request_id": item.get("placement_request_id"),
+            "asker_name": item.get("asker_name"),
+            "question": item.get("question"),
+            "question_locale": item.get("question_locale"),
+            "answer": item.get("answer"),
+            "answer_locale": item.get("answer_locale"),
+            "answered_by_name": item.get("answered_by_name"),
+            "answered_at": item.get("answered_at"),
+            "published_at": item.get("published_at"),
+            "is_answered": item.get("is_answered"),
+            "status": item.get("status"),
+        }
+        # Meo adds these only for a caller who may moderate the listing, and
+        # only sends translations when it has them, so their absence is
+        # meaningful and they are not defaulted in.
+        for key in (
+            "hidden_at",
+            "question_translation",
+            "answer_translation",
+            "machine_translated",
+        ):
+            if key in item:
+                narrowed[key] = item.get(key)
+        return narrowed
+
+    @classmethod
+    def _litter(cls, item: dict[str, Any]) -> dict[str, Any]:
+        pets = item.get("pets")
+        members = (
+            [cls._pet_summary(pet) for pet in pets if isinstance(pet, dict)]
+            if isinstance(pets, list)
+            else []
+        )
+        pet_type = item.get("pet_type") or item.get("petType")
+        return {
+            "litter_id": item.get("id"),
+            "name": item.get("name"),
+            "species": pet_type.get("name") if isinstance(pet_type, dict) else None,
+            # Members are already filtered to what the caller may view, so this
+            # is the visible count rather than the litter's true size.
+            "member_count": len(members),
+            "members": members,
+            "version": item.get("updated_at"),
+        }
+
+    @classmethod
+    def _habit_pet_summary(cls, item: dict[str, Any]) -> dict[str, Any]:
+        # `pet_photo_url` is dropped: it answers nothing an agent asks of a
+        # per-pet habit rollup and costs a URL per pet.
+        return {
+            "pet_id": item.get("pet_id"),
+            "pet_name": item.get("pet_name"),
+            "last_yes_date": item.get("last_yes_date"),
+            "days_since_last_yes": item.get("days_since_last_yes"),
+            "series": item.get("series") if isinstance(item.get("series"), list) else [],
+        }
+
+    @classmethod
     def _items(cls, payload: Any) -> list[dict[str, Any]]:
         value = cls._unwrap(payload)
         if isinstance(value, dict) and isinstance(value.get("data"), list):
@@ -5624,6 +6029,11 @@ class MeoApi:
             except ValueError:
                 age = None
         pet_type = pet.get("pet_type")
+        # Meo eager-loads `litter:id,name` on pet payloads. Narrowing it away
+        # left an agent unable to see that a pet is a littermate at all, so it
+        # could neither answer "are these siblings" nor find the litter to act
+        # on. `None` for a pet that belongs to no litter.
+        litter = pet.get("litter")
         return {
             "id": pet.get("id"),
             "name": pet.get("name"),
@@ -5631,6 +6041,11 @@ class MeoApi:
             "sex": pet.get("sex"),
             "age": age,
             "photo_url": pet.get("photo_url"),
+            "litter": (
+                {"litter_id": litter.get("id"), "name": litter.get("name")}
+                if isinstance(litter, dict)
+                else None
+            ),
         }
 
     # Compatibility alias retained for callers of the original MVP normalizer.

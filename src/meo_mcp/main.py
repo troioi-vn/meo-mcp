@@ -8,13 +8,16 @@ import uuid
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
-from typing import Literal
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
+from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlsplit
 
 import structlog
 import uvicorn
+from mcp.server import MCPServer
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
-from mcp.server.fastmcp import FastMCP
+from mcp.server.caching import CacheHint
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import (
     BlobResourceContents,
@@ -38,6 +41,14 @@ from .security import redact_log_event
 
 logger = structlog.get_logger()
 request_id_context: ContextVar[str] = ContextVar("request_id", default="unbound")
+# One number for the guard, the SDK transport, and nginx `client_max_body_size`.
+MAX_REQUEST_BODY_BYTES = 1_048_576
+try:
+    # `serverInfo` travels in every result's `_meta` under 2026-07-28, so an
+    # empty version would be what clients and logs record for this gateway.
+    SERVER_VERSION = package_version("meo-mcp")
+except PackageNotFoundError:  # pragma: no cover - only when run from a bare checkout
+    SERVER_VERSION = "0.0.0"
 
 LANDING_PAGE = """Meo Mai Moi MCP
 
@@ -72,6 +83,22 @@ Health:
 """
 
 
+COUNTRY_DESCRIPTION = "Two-letter ISO 3166-1 alpha-2 country code, such as VN or GB."
+Country = Annotated[str, Field(description=COUNTRY_DESCRIPTION)]
+OptionalCountry = Annotated[str | None, Field(description=COUNTRY_DESCRIPTION)]
+BirthMonthYear = Annotated[
+    str | None, Field(description="Month of birth as YYYY-MM, such as 2021-07.")
+]
+
+
+class LitterMemberInput(BaseModel):
+    """One pet to create as part of a litter. Meo names an unnamed member."""
+
+    name: str | None = None
+    sex: Literal["male", "female", "not_specified"] | None = None
+    weight_kg: float | None = Field(default=None, ge=0, le=200)
+
+
 class HabitEntryInput(BaseModel):
     pet_id: int = Field(ge=1)
     value_int: int | None = None
@@ -97,6 +124,21 @@ class HelperContactInput(BaseModel):
     value: str = Field(min_length=1, max_length=255)
 
 
+def mcp_protocol_fields(request: Request) -> dict[str, str | None]:
+    """Which MCP generation this caller speaks, for the request log.
+
+    2026-07-28 dropped the `initialize` handshake, so every modern request
+    carries its own `Mcp-Protocol-Version` and `Mcp-Method`; an older client
+    sends neither until it has handshaken.  Logging both is the only way to
+    learn what a real client negotiates: no MCP client exposes the handshake to
+    the agent running inside it, and nothing else on the wire records it.
+    """
+    return {
+        "mcp_protocol_version": request.headers.get("mcp-protocol-version"),
+        "mcp_method": request.headers.get("mcp-method"),
+    }
+
+
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
@@ -112,6 +154,7 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 method=request.method,
                 endpoint=request.url.path,
                 latency_ms=round((time.monotonic() - started) * 1000, 2),
+                **mcp_protocol_fields(request),
             )
             raise
         else:
@@ -123,6 +166,7 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 endpoint=request.url.path,
                 status=response.status_code,
                 latency_ms=round((time.monotonic() - started) * 1000, 2),
+                **mcp_protocol_fields(request),
             )
             return response
         finally:
@@ -160,10 +204,10 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 declared_length = int(raw_length) if raw_length is not None else None
             except ValueError:
                 return error("invalid_content_length", "Content-Length must be an integer.", 400)
-            if declared_length is not None and declared_length > 1_048_576:
+            if declared_length is not None and declared_length > MAX_REQUEST_BODY_BYTES:
                 return error("request_too_large", "The request body exceeds 1 MiB.", 413)
             body = await request.body()
-            if len(body) > 1_048_576:
+            if len(body) > MAX_REQUEST_BODY_BYTES:
                 return error("request_too_large", "The request body exceeds 1 MiB.", 413)
             if request.url.path == "/token":
                 form = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
@@ -227,8 +271,9 @@ def create_app(settings: Settings | None = None) -> Starlette:
     provider = DatabaseOAuthProvider(sessions, settings)
     api = MeoApi(sessions, settings)
     public_host = settings.public_base_url.host
-    server = FastMCP(
+    server = MCPServer(
         "Meo Mai Moi",
+        version=SERVER_VERSION,
         instructions=(
             "Read and safely update Meo Mai Moi pets, health history, habits, photos, "
             "microchips, pet sharing, placement opportunities, helper profiles, messages, "
@@ -246,13 +291,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
             ),
             revocation_options=RevocationOptions(enabled=True),
         ),
-        stateless_http=True,
-        json_response=True,
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=[public_host, f"{public_host}:*"],
-            allowed_origins=settings.allowed_origins,
-        ),
+        # The catalog is the same for every caller and only changes on deploy,
+        # so a client may hold it for an hour. Keep the scope private: nothing
+        # here varies by grant, but a shared intermediary caching an authorized
+        # response buys us nothing worth reasoning about.
+        cache_hints={"tools/list": CacheHint(ttl_ms=3_600_000, scope="private")},
     )
 
     read_annotations = {
@@ -403,11 +446,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def create_pet(
         name: str,
         species: str,
-        country: str,
+        country: Country,
         idempotency_key: str,
         sex: Literal["male", "female", "not_specified", "unknown"] | None = None,
         birth_date: date | None = None,
-        birth_month_year: str | None = None,
+        birth_month_year: BirthMonthYear = None,
         age_months: int | None = None,
         description: str | None = None,
         category_ids: list[int] | None = None,
@@ -438,7 +481,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         species: str | None = None,
         sex: Literal["male", "female", "not_specified", "unknown"] | None = None,
         birth_date: date | None = None,
-        birth_month_year: str | None = None,
+        birth_month_year: BirthMonthYear = None,
         age_months: int | None = None,
         description: str | None = None,
         category_ids: list[int] | None = None,
@@ -781,6 +824,84 @@ def create_app(settings: Settings | None = None) -> Starlette:
         )
 
     @server.tool(annotations=read_annotations)
+    async def get_litter(litter_id: int) -> CallToolResult:
+        """Read one litter with the members the caller is allowed to see."""
+        return await call(api.get_litter, litter_id)
+
+    @server.tool(annotations=create_annotations)
+    async def create_litter(
+        pet_type_id: int,
+        country: Country,
+        members: list[LitterMemberInput],
+        idempotency_key: str,
+        name: str | None = None,
+        description: str | None = None,
+        state: str | None = None,
+        city_id: int | None = None,
+        birthday: str | None = None,
+        birthday_precision: Literal["day", "month", "year", "unknown"] | None = None,
+        group_id: int | None = None,
+    ) -> CallToolResult:
+        """Create a litter and every member pet in one transaction."""
+        return await call(
+            api.create_litter,
+            pet_type_id,
+            country,
+            [member.model_dump(exclude_none=True) for member in members],
+            idempotency_key,
+            name,
+            description,
+            state,
+            city_id,
+            birthday,
+            birthday_precision,
+            group_id,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def rename_litter(
+        litter_id: int,
+        name: str,
+        expected_current_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Rename an exact litter after confirming its current name and version."""
+        return await call(
+            api.rename_litter,
+            litter_id,
+            name,
+            expected_current_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def separate_pet_from_litter(
+        litter_id: int,
+        pet_id: int,
+        expected_litter_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Detach one pet from a litter; the pet is kept, the litter may dissolve."""
+        return await call(
+            api.separate_pet_from_litter,
+            litter_id,
+            pet_id,
+            expected_litter_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def split_up_litter(
+        litter_id: int, expected_litter_name: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Dissolve a litter, detaching every member. No pet is deleted."""
+        return await call(api.split_up_litter, litter_id, expected_litter_name, idempotency_key)
+
+    @server.tool(annotations=read_annotations)
     async def list_habits() -> CallToolResult:
         """List visible habit trackers with narrowed configuration."""
         return await call(api.list_habits)
@@ -796,6 +917,13 @@ def create_app(settings: Settings | None = None) -> Starlette:
     ) -> CallToolResult:
         """Read bounded daily summary values for one habit."""
         return await call(api.get_habit_heatmap, habit_id, weeks, end_date)
+
+    @server.tool(annotations=read_annotations)
+    async def get_habit_pet_summary(
+        habit_id: int, weeks: int = 4, end_date: date | None = None
+    ) -> CallToolResult:
+        """Per-pet rollup for one habit: who is up to date and who has lapsed."""
+        return await call(api.get_habit_pet_summary, habit_id, weeks, end_date)
 
     @server.tool(annotations=read_annotations)
     async def get_habit_day_entries(habit_id: int, entry_date: date) -> CallToolResult:
@@ -1176,7 +1304,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def list_placement_opportunities(
         request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]
         | None = None,
-        country: str | None = None,
+        country: OptionalCountry = None,
         city: str | None = None,
         pet_type_id: int | None = None,
     ) -> CallToolResult:
@@ -1197,7 +1325,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @server.tool(annotations=read_annotations)
     async def search_helper_profiles(
-        country: str | None = None,
+        country: OptionalCountry = None,
         city: str | None = None,
         request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]
         | None = None,
@@ -1231,7 +1359,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @server.tool(annotations=read_annotations)
     async def list_helper_location_options(
-        country: str | None = None, search: str | None = None
+        country: OptionalCountry = None, search: str | None = None
     ) -> CallToolResult:
         """List countries or search cities for helper-profile and placement filtering."""
         return await call(api.list_helper_location_options, country, search)
@@ -1239,7 +1367,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     @server.tool(annotations=create_annotations)
     async def create_helper_city_option(
         name: str,
-        country: str,
+        country: Country,
         idempotency_key: str,
         description: str | None = None,
     ) -> CallToolResult:
@@ -2197,6 +2325,86 @@ def create_app(settings: Settings | None = None) -> Starlette:
             expires_at,
         )
 
+    @server.tool(annotations=read_annotations)
+    async def list_placement_questions(placement_request_id: int) -> CallToolResult:
+        """List the Q&A for a listing; moderators also see pending and hidden."""
+        return await call(api.list_placement_questions, placement_request_id)
+
+    @server.tool(annotations=create_annotations)
+    async def ask_placement_question(
+        placement_request_id: int,
+        asker_name: str,
+        question: str,
+        asker_email: str | None = None,
+    ) -> CallToolResult:
+        """Ask a public question about a listing; it stays unpublished until answered."""
+        return await call(
+            api.ask_placement_question, placement_request_id, asker_name, question, asker_email
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def answer_placement_question(
+        question_id: int, answer: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Answer one question, which is what publishes it to the listing."""
+        return await call(api.answer_placement_question, question_id, answer, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def approve_placement_question(question_id: int, idempotency_key: str) -> CallToolResult:
+        """Publish one question without answering it."""
+        return await call(api.approve_placement_question, question_id, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def hide_placement_question(question_id: int, idempotency_key: str) -> CallToolResult:
+        """Hide one published question from the public listing."""
+        return await call(api.hide_placement_question, question_id, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def unhide_placement_question(question_id: int, idempotency_key: str) -> CallToolResult:
+        """Restore one hidden question to the public listing."""
+        return await call(api.unhide_placement_question, question_id, idempotency_key)
+
+    @server.tool(annotations=read_annotations)
+    async def translate_placement_question(question_id: int) -> CallToolResult:
+        """Translate one already published question and answer pair."""
+        return await call(api.translate_placement_question, question_id)
+
+    @server.tool(annotations=update_annotations)
+    async def cancel_placement_request(
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Cancel an open listing; Meo also rejects every outstanding response."""
+        return await call(
+            api.cancel_placement_request,
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def reopen_placement_request(
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Re-open a cancelled or expired listing, clearing an elapsed expiry."""
+        return await call(
+            api.reopen_placement_request,
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
     @server.tool(annotations=update_annotations)
     async def delete_placement_request(
         placement_request_id: int,
@@ -2218,19 +2426,21 @@ def create_app(settings: Settings | None = None) -> Starlette:
     @server.tool(annotations=create_annotations)
     async def respond_to_placement_request(
         placement_request_id: int,
-        helper_profile_id: int,
         expected_pet_name: str,
         idempotency_key: str,
+        helper_profile_id: int | None = None,
         message: str | None = None,
+        phone_number: str | None = None,
     ) -> CallToolResult:
-        """Submit one helper profile response to an explicit placement request."""
+        """Offer to take an exact pet; omit the profile for a quick response."""
         return await call(
             api.respond_to_placement_request,
             placement_request_id,
-            helper_profile_id,
             expected_pet_name,
             idempotency_key,
+            helper_profile_id,
             message,
+            phone_number,
         )
 
     @server.tool(annotations=update_annotations)
@@ -2341,7 +2551,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @server.tool(annotations=create_annotations)
     async def create_helper_profile(
-        country: str,
+        country: Country,
         city_ids: list[int],
         phone_number: str,
         experience: str,
@@ -2381,7 +2591,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         helper_profile_id: int,
         base_version: str,
         idempotency_key: str,
-        country: str | None = None,
+        country: OptionalCountry = None,
         city_ids: list[int] | None = None,
         phone_number: str | None = None,
         experience: str | None = None,
@@ -2559,7 +2769,10 @@ def create_app(settings: Settings | None = None) -> Starlette:
         )
 
     async def health(_: Request) -> Response:
-        return JSONResponse({"status": "ok"})
+        # The version is here so "did my deploy land?" is answerable from
+        # outside the host.  Without it the only way to tell one build from
+        # another is SSH, which the person asking usually does not have.
+        return JSONResponse({"status": "ok", "version": SERVER_VERSION})
 
     async def landing(_: Request) -> Response:
         return PlainTextResponse(
@@ -2610,7 +2823,19 @@ def create_app(settings: Settings | None = None) -> Starlette:
             Route("/.well-known/oauth-protected-resource", protected_resource),
             Route("/.well-known/oauth-protected-resource/mcp", protected_resource),
             Route("/oauth/meo/callback", meo_callback),
-            Mount("/", server.streamable_http_app()),
+            Mount(
+                "/",
+                server.streamable_http_app(
+                    json_response=True,
+                    stateless_http=True,
+                    max_request_body_size=MAX_REQUEST_BODY_BYTES,
+                    transport_security=TransportSecuritySettings(
+                        enable_dns_rebinding_protection=True,
+                        allowed_hosts=[public_host, f"{public_host}:*"],
+                        allowed_origins=settings.allowed_origins,
+                    ),
+                ),
+            ),
         ],
         lifespan=lifespan,
     )

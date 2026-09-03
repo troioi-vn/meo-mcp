@@ -40,19 +40,21 @@ revoked grant.
 Requests pass through gateway guards before MCP or OAuth handlers:
 
 - **Host validation:** the `Host` must match `PUBLIC_BASE_URL`. Only `/health`
-  permits loopback hosts for container probes. This and FastMCP transport
+  permits loopback hosts for container probes. This and the SDK's transport
   security reduce DNS-rebinding exposure.
 - **Origin validation:** when a browser sends `Origin`, it must be an exact
   member of `ALLOWED_ORIGINS`. An empty list means no browser origin is trusted.
   This is request validation; it does not itself enable CORS.
 - **Body limit:** `POST`, `PUT`, and `PATCH` bodies are capped at 1 MiB using
-  both declared and actual length. Invalid `Content-Length` is rejected.
+  both declared and actual length. Invalid `Content-Length` is rejected. The
+  guard, the SDK transport, and nginx are held to one number by
+  `MAX_REQUEST_BODY_BYTES`.
 - **Audience binding:** OAuth authorization and token requests must name the
   exact `{PUBLIC_BASE_URL}/mcp` resource. Access-token records are checked
   against the same resource.
 - **Request correlation:** every response receives `X-Request-ID`; a caller's
   value is preserved when supplied. Structured guard errors include it.
-- **Transport lifecycle:** the FastMCP session manager is started and stopped
+- **Transport lifecycle:** the SDK session manager is started and stopped
   with the parent Starlette lifespan.
 
 Remote pet-photo ingestion has a second outbound boundary. It accepts only
@@ -96,7 +98,8 @@ Structured logging redacts fields named for access/refresh tokens, API keys,
 authorization codes, delegated/Sanctum tokens, HMAC material, encryption keys,
 and common `*_secret` or `*_token` variants before rendering. Code should log
 only request IDs, safe endpoint identifiers, status, latency, and exception
-types—not raw headers, bodies, query strings, or credential-bearing free text.
+types. Never raw headers, bodies, query strings, or credential-bearing free
+text.
 
 Tool errors replace upstream bodies with gateway-owned messages and stable
 codes. This prevents internal or user-specific upstream detail from crossing

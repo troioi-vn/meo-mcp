@@ -7,10 +7,18 @@ from uuid import uuid4
 import httpx
 import pytest
 import respx
+from mcp.shared.inbound import HEADER_MISMATCH
+from mcp_types import (
+    CLIENT_CAPABILITIES_META_KEY,
+    CLIENT_INFO_META_KEY,
+    LATEST_PROTOCOL_VERSION,
+    PROTOCOL_VERSION_META_KEY,
+    SERVER_INFO_META_KEY,
+)
 
 from meo_mcp.config import Settings
 from meo_mcp.database import AccessTokenRecord, Base, Grant, make_session_factory
-from meo_mcp.main import create_app
+from meo_mcp.main import SERVER_VERSION, create_app
 from meo_mcp.oauth import ALLOWED_SCOPES
 from meo_mcp.security import TokenCipher, digest, now
 
@@ -33,6 +41,8 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
     ) as client:
         health = await client.get("/health")
         assert health.status_code == 200
+        # Operators read this to confirm which build answered.
+        assert health.json() == {"status": "ok", "version": SERVER_VERSION}
         metadata = await client.get("/.well-known/oauth-protected-resource/mcp")
         response = await client.post("/mcp", json={})
     assert response.status_code == 401
@@ -97,7 +107,51 @@ async def test_request_log_is_structured_and_omits_query_values(caplog) -> None:
     assert request_event["endpoint"] == "/health"
     assert request_event["status"] == 200
     assert isinstance(request_event["latency_ms"], float)
+    # A caller that sends no MCP headers is a legacy-generation client; the
+    # field has to be present and empty rather than absent, or a log query
+    # cannot tell "did not send" from "was never recorded".
+    assert request_event["mcp_protocol_version"] is None
+    assert request_event["mcp_method"] is None
     assert "must-not-appear" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_request_log_records_the_protocol_version_a_modern_client_sends(caplog) -> None:
+    """No MCP client reports its negotiated revision to the agent inside it, so
+    the request log is the only place this gateway can learn what real clients
+    speak.  That makes the field acceptance evidence, not decoration."""
+    key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
+    app = create_app(
+        Settings(
+            database_url="sqlite+aiosqlite:///ignored.db",
+            token_encryption_key=key,
+            meo_connector_hmac_secret="hmac",
+            meo_connector_api_key="key",
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url=str(app.state.settings.public_base_url),
+        ) as client:
+            await client.get(
+                "/health",
+                headers={
+                    "X-Request-ID": "protocol-log-test",
+                    "Mcp-Protocol-Version": LATEST_PROTOCOL_VERSION,
+                    "Mcp-Method": "tools/call",
+                },
+            )
+
+    events = [json.loads(record.message) for record in caplog.records]
+    request_event = next(
+        event
+        for event in events
+        if event.get("event") == "http_request" and event.get("request_id") == "protocol-log-test"
+    )
+    assert request_event["mcp_protocol_version"] == LATEST_PROTOCOL_VERSION
+    assert request_event["mcp_method"] == "tools/call"
 
 
 @pytest.mark.asyncio
@@ -232,9 +286,15 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "delete_medical_record",
         "upload_medical_record_photo_from_url",
         "delete_medical_record_photo",
+        "get_litter",
+        "create_litter",
+        "rename_litter",
+        "separate_pet_from_litter",
+        "split_up_litter",
         "list_habits",
         "get_habit",
         "get_habit_heatmap",
+        "get_habit_pet_summary",
         "get_habit_day_entries",
         "create_habit",
         "update_habit",
@@ -350,6 +410,15 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "create_account_invitation",
         "revoke_account_invitation",
         "create_placement_request",
+        "list_placement_questions",
+        "ask_placement_question",
+        "answer_placement_question",
+        "approve_placement_question",
+        "hide_placement_question",
+        "unhide_placement_question",
+        "translate_placement_question",
+        "cancel_placement_request",
+        "reopen_placement_request",
         "delete_placement_request",
         "respond_to_placement_request",
         "accept_placement_response",
@@ -404,6 +473,7 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
                 "sex": "female",
                 "age": None,
                 "photo_url": None,
+                "litter": None,
             }
         ]
     }
@@ -564,3 +634,198 @@ async def test_list_pets_translates_upstream_errors_to_structured_tool_results(
         assert upstream_event["upstream_status"] == 503
         assert "delegated-pat" not in caplog.text
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_stateless_2026_07_28_request_needs_no_handshake(tmp_path) -> None:
+    """A modern client calls a tool cold: no initialize, no session, headers only."""
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'modern.db'}"
+    key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
+    settings = Settings(
+        database_url=database_url,
+        token_encryption_key=key,
+        meo_connector_hmac_secret="hmac",
+        meo_connector_api_key="key",
+    )
+    engine, sessions = make_session_factory(database_url)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    access_token = "modern-access-token"
+    grant = Grant(
+        id=uuid4(),
+        client_id="client-id",
+        subject="42",
+        scopes=ALLOWED_SCOPES,
+        delegated_token_ciphertext=TokenCipher(key).encrypt("1|delegated-pat"),
+        expires_at=now() + timedelta(days=1),
+    )
+    async with sessions() as session:
+        session.add(grant)
+        await session.flush()
+        session.add(
+            AccessTokenRecord(
+                token_hash=digest(access_token),
+                grant_id=grant.id,
+                client_id=grant.client_id,
+                scopes=grant.scopes,
+                subject=grant.subject,
+                resource=settings.resource,
+                expires_at=now() + timedelta(hours=1),
+            )
+        )
+        await session.commit()
+
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    base_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json, text/event-stream",
+        "Mcp-Protocol-Version": LATEST_PROTOCOL_VERSION,
+    }
+    meta = {
+        PROTOCOL_VERSION_META_KEY: LATEST_PROTOCOL_VERSION,
+        CLIENT_CAPABILITIES_META_KEY: {},
+        CLIENT_INFO_META_KEY: {"name": "modern-test", "version": "1.0"},
+    }
+    with respx.mock:
+        respx.get("https://app.example.com/api/my-pets").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"id": 7, "name": "Miso", "pet_type": {"name": "Cat"}, "sex": "female"}
+                    ]
+                },
+            )
+        )
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport,
+                base_url=str(settings.public_base_url),
+            ) as client,
+        ):
+            discovered = await client.post(
+                "/mcp",
+                headers={**base_headers, "Mcp-Method": "server/discover"},
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "server/discover",
+                    "params": {"_meta": meta},
+                },
+            )
+            tools = await client.post(
+                "/mcp",
+                headers={**base_headers, "Mcp-Method": "tools/list"},
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": {"_meta": meta},
+                },
+            )
+            called = await client.post(
+                "/mcp",
+                headers={
+                    **base_headers,
+                    "Mcp-Method": "tools/call",
+                    "Mcp-Name": "list_pets",
+                },
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "tools/call",
+                    "params": {"name": "list_pets", "arguments": {}, "_meta": meta},
+                },
+            )
+
+    assert discovered.status_code == 200
+    discovery = discovered.json()["result"]
+    assert discovery["supportedVersions"] == [LATEST_PROTOCOL_VERSION]
+    # 2026-07-28 moves server identity out of a handshake and into every result.
+    server_info = discovery["_meta"][SERVER_INFO_META_KEY]
+    assert server_info["name"] == "Meo Mai Moi"
+    assert server_info["version"] == SERVER_VERSION
+
+    # SEP-2549: the catalog carries its own freshness hint, from `cache_hints`.
+    listed = tools.json()["result"]
+    assert listed["ttlMs"] == 3_600_000
+    assert listed["cacheScope"] == "private"
+    assert listed["tools"][0]["name"] == "list_pets"
+
+    result = called.json()["result"]
+    assert result["resultType"] == "complete"
+    assert result["isError"] is False
+    assert result["structuredContent"]["pets"][0]["name"] == "Miso"
+
+
+@pytest.mark.asyncio
+async def test_modern_request_is_refused_when_a_proxy_strips_the_mcp_headers(tmp_path) -> None:
+    """`Mcp-Method` is not decoration: without it the request never reaches a tool."""
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'stripped.db'}"
+    key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
+    settings = Settings(
+        database_url=database_url,
+        token_encryption_key=key,
+        meo_connector_hmac_secret="hmac",
+        meo_connector_api_key="key",
+    )
+    engine, sessions = make_session_factory(database_url)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    access_token = "stripped-access-token"
+    grant = Grant(
+        id=uuid4(),
+        client_id="client-id",
+        subject="42",
+        scopes=ALLOWED_SCOPES,
+        delegated_token_ciphertext=TokenCipher(key).encrypt("1|delegated-pat"),
+        expires_at=now() + timedelta(days=1),
+    )
+    async with sessions() as session:
+        session.add(grant)
+        await session.flush()
+        session.add(
+            AccessTokenRecord(
+                token_hash=digest(access_token),
+                grant_id=grant.id,
+                client_id=grant.client_id,
+                scopes=grant.scopes,
+                subject=grant.subject,
+                resource=settings.resource,
+                expires_at=now() + timedelta(hours=1),
+            )
+        )
+        await session.commit()
+
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url=str(settings.public_base_url)) as client,
+    ):
+        response = await client.post(
+            "/mcp",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json, text/event-stream",
+                "Mcp-Protocol-Version": LATEST_PROTOCOL_VERSION,
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "server/discover",
+                "params": {
+                    "_meta": {
+                        PROTOCOL_VERSION_META_KEY: LATEST_PROTOCOL_VERSION,
+                        CLIENT_CAPABILITIES_META_KEY: {},
+                    }
+                },
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == HEADER_MISMATCH

@@ -8,7 +8,7 @@ steps:
       - pip install --no-cache-dir uv
       - uv sync --all-groups
       - uv run pytest -q
-      - uv run ruff check src tests
+      - uv run ruff check src tests scripts
 
   notify_start_dev:
     image: curlimages/curl:8.16.0

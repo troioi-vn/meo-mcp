@@ -35,7 +35,7 @@ summary:
 The server-managed `.env` holds `DATABASE_URL`, public and Meo base URLs, the Meo
 connector API key/HMAC secret, and a unique 32-byte base64url AES key. Do not
 store it in Git. Recovery and CI injection of those values are documented in
-the private operator runbook — not in this repository.
+the private operator runbook, not in this repository.
 
 Application logs are structured JSON and retain request ID, method, endpoint,
 status, and latency without query strings, headers, bodies, or credentials.
@@ -69,8 +69,8 @@ test cryptographic material:
 ```bash
 uv sync --all-groups
 uv run pytest
-uv run ruff check src tests
-uv run ruff format --check src tests
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 ```
 
 Run Alembic or the application against PostgreSQL only after setting the names

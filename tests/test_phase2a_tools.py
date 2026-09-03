@@ -496,3 +496,58 @@ def test_phase2a_normalizers_and_validators_narrow_and_reject() -> None:
         )
     with pytest.raises(MeoApiError, match="pet_ids must be unique"):
         MeoApi._habit_entries([{"pet_id": 9, "value_int": 1}, {"pet_id": 9, "value_int": None}])
+
+
+@pytest.mark.asyncio
+async def test_habit_pet_summary_defaults_to_a_short_window_and_drops_photo_urls(
+    tmp_path,
+) -> None:
+    """The rollup answers "who has lapsed", so it defaults to four weeks.
+
+    Upstream defaults to 52 because it draws a chart; a numeric habit over a
+    year multiplies a series by every visible pet, which is the wrong shape to
+    hand an agent by default. The window stays caller-adjustable either way.
+    """
+    app, engine, settings = await _app_with_token(tmp_path, ["habits:read"])
+    with respx.mock:
+        summary = respx.get("https://app.example.com/api/habits/12/pet-summary").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "start_date": "2026-08-07",
+                        "end_date": "2026-09-03",
+                        "pets": [
+                            {
+                                "pet_id": 9,
+                                "pet_name": "Miso",
+                                "pet_photo_url": "https://app.example.com/storage/miso.jpg",
+                                "last_yes_date": "2026-09-01",
+                                "days_since_last_yes": 2,
+                                "series": [],
+                            }
+                        ],
+                    }
+                },
+            )
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport, base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            result = await _call(client, "get_habit_pet_summary", {"habit_id": 12})
+
+    assert result["isError"] is False, result
+    assert summary.calls[0].request.url.params["weeks"] == "4"
+    pet = result["structuredContent"]["pets"][0]
+    assert pet == {
+        "pet_id": 9,
+        "pet_name": "Miso",
+        "last_yes_date": "2026-09-01",
+        "days_since_last_yes": 2,
+        "series": [],
+    }
+    await engine.dispose()

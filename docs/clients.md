@@ -4,7 +4,9 @@
 
 - The environment's public base URL, written below as `<MCP_BASE_URL>`.
 - A verified, non-banned Meo account.
-- An MCP client supporting remote Streamable HTTP and OAuth.
+- An MCP client supporting remote Streamable HTTP and OAuth. Any protocol
+  revision works: the gateway answers `2026-07-28` clients, which send a tool
+  call with no handshake, and pre-2026 clients, which open with `initialize`.
 
 Do not configure a bearer token manually. Point the client at
 `<MCP_BASE_URL>/mcp`; OAuth discovery supplies the authorization server and the
@@ -32,10 +34,8 @@ These neighboring instruction surfaces have different jobs:
 
 - The public [Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill)
   is the opt-in, consumer-facing workflow for connecting and using this OAuth
-  gateway across SKILL.md-compatible agents.
-- The [Meo Mai Moi REST API skill](https://github.com/troioi-vn/meo-mai-moi-skill)
-  is a separate direct-API/PAT integration path. Do not substitute a personal
-  API token for MCP OAuth.
+  gateway across SKILL.md-compatible agents. Never substitute a personal API
+  token for MCP OAuth; the former direct-API/PAT skill is archived.
 - [`AGENTS.md`](../AGENTS.md) and the in-repository
   [gateway skill](../.agents/skills/meo-mcp/SKILL.md) are maintainer-facing
   engineering guidance, not installation instructions for end users.
@@ -46,8 +46,8 @@ Scope selection is task-driven. Prefer the narrowest grant that covers the
 intended work:
 
 - **Narrow task**: request only that domain's read or read/write pair.
-- **Everyday care** (default for an unqualified “connect Meo Mai Moi” /
-  “manage my pets” request):
+- **Everyday care** (default for an unqualified "connect Meo Mai Moi" /
+  "manage my pets" request):
   `pets:read pets:write health:read health:write habits:read habits:write microchips:read microchips:write`.
 - **Full management**: all currently advertised scopes. Use only after an
   explicit user choice, and warn first that it permits sensitive reads and
@@ -69,6 +69,25 @@ codex mcp login meo-mai-moi --scopes pets:read,health:read
 codex mcp list
 ```
 
+`codex mcp add` opens the OAuth flow by itself, asking for the full default
+scope set. To authorize narrowly, cancel that browser flow and run the
+`codex mcp login --scopes` line instead; the server entry survives the
+cancellation.
+
+Adding the server does not give tools to a Codex conversation that is already
+running. Three states have to be checked separately, and the first two do not
+imply the third:
+
+1. `codex mcp list` shows the server entry.
+2. OAuth reports success.
+3. The current session exposes native `mcp__meo_mai_moi__*` tools.
+
+After adding the server or changing its scopes, close and reopen Codex CLI and
+start a fresh session. Confirm projection before the first call by checking
+that `mcp__meo_mai_moi__list_pets` exists. Do not reach for `codex exec` when
+projection is missing: it starts a separate client with its own approval
+policy, so what it can or cannot do says nothing about the running session.
+
 Request only `pets:read` when the client needs pet profiles but not health
 history. For a broad connect request, use the Everyday care scope set above.
 OAuth accepts either narrow scope or a documented combination, and each tool
@@ -84,8 +103,8 @@ Keep the read-only command above for ordinary inspection. Request
 `health:read`, only for an intended write workflow. Habits similarly pair
 `habits:read,habits:write`, and microchips pair
 `microchips:read,microchips:write`; pet-photo workflows use the pet pair. Write
-tools require stable IDs, idempotency keys, and—for updates, lifecycle actions,
-and deletes—the version returned by the matching read tool.
+tools require stable IDs and idempotency keys. Updates, lifecycle actions, and
+deletes also require the version returned by the matching read tool.
 
 Pet sharing pairs `sharing:read,sharing:write`. These high-impact tools require
 fresh sharing or invitation state plus exact expected pet, role, user, or
@@ -175,7 +194,7 @@ openclaw mcp reload
 
 `openclaw mcp probe` is the configuration and authentication check. `openclaw
 mcp reload` refreshes CLI/runtime configuration but does not retrofit native
-MCP tools into an already-created agent thread—ask the user for `/new` or
+MCP tools into an already-created agent thread. Ask the user for `/new` or
 `/reset`, then confirm with a native `list_pets` call. An empty or unrelated
 `tool_search` result is not proof that the Meo server lacks tools. If a later
 call reports `insufficient_scope`, add only the missing domain's read/write
@@ -226,7 +245,8 @@ the scopes currently listed in [tools.md](tools.md).
 | Redirect or PKCE error | Remove stale registration/auth state and reconnect with a current OAuth-capable client |
 | `authorization_inactive` or upstream `401` | Reconnect to create a new delegated grant |
 | `upstream_rate_limited` / retryable `5xx` | Back off and retry later |
-| Tools do not refresh after a release | Restart/reload the client and run tool discovery again |
+| Tools do not refresh after a release | Restart/reload the client and run tool discovery again; a `2026-07-28` client may hold the catalog for up to an hour |
+| `-32020` header mismatch | A proxy in front of the client stripped or rewrote `Mcp-Protocol-Version`, `Mcp-Method`, or `Mcp-Name`. Under `2026-07-28` these must reach the gateway unmodified |
 | OpenClaw probe OK but tools missing in chat | Start a new session with `/new` or `/reset`; do not reauthorize |
 | OpenClaw expired authorization code | Start a new `mcp login`; never reuse the old code |
 

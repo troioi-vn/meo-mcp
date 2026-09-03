@@ -37,9 +37,15 @@ part of the end-user tool surface.
 | `update_vaccination` | Live | Correct one explicit vaccination at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/vaccinations/{vaccination_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites pet medical data |
 | `add_medical_record` | Live | Record one dated medical event for an explicit pet | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `create`) | `POST /api/pets/{pet_id}/medical-records`; `GET /api/pets/{pet_id}/medical-records/{record_id}` | Create | Moderate; creates sensitive medical data |
 | `update_medical_record` | Live | Correct one explicit medical record at a known version | `health:read` + `health:write` | `health:read` + `health:write` (legacy PAT: `read` + `update`) | `GET /api/pets/{pet_id}/medical-records/{record_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites sensitive medical data |
+| `get_litter` | Live | Read one litter with the members the caller may see | `pets:read` | `pets:read` (legacy PAT: `read`) | `GET /api/litters/{litter_id}` | Read | Moderate; sibling grouping and member pets |
+| `create_litter` | Live | Create a litter and every member pet in one transaction | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `create`) | `POST /api/litters`; read-back verification | Create | High; creates several pets at once, and Meo names any member left unnamed |
+| `rename_litter` | Live | Rename an exact litter after a name and version preview | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | litter read; `PUT /api/litters/{litter_id}`; verification | Update | Low; label only |
+| `separate_pet_from_litter` | Live | Detach one pet from a litter, keeping the pet | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `update`) | litter read; `DELETE /api/litters/{litter_id}/members/{pet_id}`; membership verification | Update | Moderate; the litter dissolves when fewer than two members remain |
+| `split_up_litter` | Live | Dissolve a litter, detaching every member | `pets:read` + `pets:write` | `pets:read` + `pet:write` (legacy PAT: `read` + `delete`) | litter read; `POST /api/litters/{litter_id}/split-up`; absence verification | Delete | Moderate; removes the grouping, never a pet |
 | `list_habits` | Live | List habit trackers visible to the user | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits` | Read | Moderate; pet routines and reminder settings |
 | `get_habit` | Live | Retrieve one explicit habit and its editable version | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}` | Read | Moderate; pet routines and reminder settings |
 | `get_habit_heatmap` | Live | Summarize a bounded date range of habit completion/intensity | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/heatmap` | Read | Moderate; longitudinal care routine data |
+| `get_habit_pet_summary` | Live | Per-pet rollup of one habit: who is current and who has lapsed | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/pet-summary` | Read | Moderate; per-pet care adherence |
 | `get_habit_day_entries` | Live | Read per-pet values for one explicit habit date | `habits:read` | `habits:read` (legacy PAT: `read`) | `GET /api/habits/{habit_id}/entries/{date}` | Read | Moderate; per-pet routine data |
 | `create_habit` | Live | Create a tracker for explicit owned pet IDs | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `create`) | `POST /api/habits`; verification `GET /api/habits/{habit_id}` | Create | Moderate; creates reminders and routine tracking |
 | `update_habit` | Live | Update one explicit habit at a known version | `habits:read` + `habits:write` | `habits:read` + `habits:write` (legacy PAT: `read` + `update`) | `GET /api/habits/{habit_id}`; `PUT` same path; verification `GET` | Update | Moderate; overwrites tracker configuration |
@@ -81,8 +87,17 @@ part of the end-user tool surface.
 | `list_chat_messages` | Live | Page through one explicit chat without changing read receipts | `messages:read` | `messages:read` (legacy PAT: `read`) | side-effect-free `GET /api/msg/chats/{chat_id}/messages` | Read | Critical; private message bodies and image URLs |
 | `get_unread_message_count` | Live | Count unread messages without marking any chat read | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/unread-count` | Read | Moderate; private activity metadata |
 | `create_placement_request` | Live | Create one explicit pet placement request | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `create`) | `POST /api/placement-requests`; verification reads | Create | High; publishes placement intent |
+| `list_placement_questions` | Live | Read the public Q&A for a listing | `placement:read` | `placement:read` (legacy PAT: `read`) | `GET /api/placement-requests/{id}/questions` | Read | Moderate; moderators additionally see pending and hidden questions |
+| `ask_placement_question` | Live | Ask a public question about a listing | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `create`) | `POST /api/placement-requests/{id}/questions` | Create | Moderate; nothing is public until someone answers or approves it |
+| `answer_placement_question` | Live | Answer one question, publishing the pair | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/answer`; status verification | Update | High; publishes to a public listing |
+| `approve_placement_question` | Live | Publish one question without answering it | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/approve`; status verification | Update | High; publishes to a public listing |
+| `hide_placement_question` | Live | Hide one published question | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/hide`; status verification | Update | Moderate; moderation |
+| `unhide_placement_question` | Live | Restore one hidden question | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/unhide` | Update | Moderate; moderation |
+| `translate_placement_question` | Live | Translate one published question and answer pair | `placement:read` | `placement:read` (legacy PAT: `read`) | `POST /api/placement-questions/{id}/translate` | Read | Low; translation of already public text |
+| `cancel_placement_request` | Live | Cancel an open listing after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | request read; `POST /api/placement-requests/{id}/reject`; status verification | Update | High; also rejects every outstanding response and notifies those helpers |
+| `reopen_placement_request` | Live | Re-open a cancelled or expired listing after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | request read; `POST /api/placement-requests/{id}/confirm`; status verification | Update | Medium; republishes placement intent and clears an elapsed expiry |
 | `delete_placement_request` | Live | Delete an exact owned request after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `delete`) | request read; `DELETE /api/placement-requests/{id}`; absence verification | Delete | High; removes request context |
-| `respond_to_placement_request` | Live | Offer an exact helper profile for an exact placement | `placement:read` + `placement:write` + `helpers:read` | `placement:read` + `placement:write` + `helpers:read` (legacy PAT: `read` + `create`) | request/profile reads; `POST .../responses`; verification | Create | High; shares helper identity and offer |
+| `respond_to_placement_request` | Live | Offer to take an exact pet, with or without naming a helper profile | `placement:read` + `placement:write`, plus `helpers:read` only when `helper_profile_id` is given | same (legacy PAT: `read` + `create`) | request read; profile read only when named; `POST .../responses`; verification | Create | High; shares helper identity and offer |
 | `accept_placement_response` | Live | Accept an exact owner-reviewed response and start handover | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | response read; `POST .../{id}/accept`; verification | Update | Critical; selects custodian |
 | `reject_placement_response` | Live | Reject an exact owner-reviewed response | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | response read; `POST .../{id}/reject`; verification | Update | High; blocks helper response |
 | `cancel_placement_response` | Live | Cancel the caller's exact current response | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | context read; `POST .../{id}/cancel`; verification | Update | High; withdraws offer |
@@ -474,6 +489,38 @@ The gateway then reads the target back, or verifies absence after a delete.
   52), and optional ISO `end_date`. It returns daily rows containing only
   `date`, nullable `average_value`, nullable `display_value`, `entry_count`,
   `visible_pet_count`, and nullable `normalized_intensity`.
+- Placement question tools narrow a question to `question_id`, `pet_id`,
+  `placement_request_id`, `asker_name`, `question`, `question_locale`,
+  `answer`, `answer_locale`, `answered_by_name`, `answered_at`,
+  `published_at`, `is_answered`, and `status`. `hidden_at` and the translation
+  fields are passed through only when Meo sends them, because it sends
+  `hidden_at` to moderators alone and translations only where they exist; their
+  absence is information and is never defaulted in.
+- `ask_placement_question` and `translate_placement_question` take no
+  idempotency key: those two routes carry no idempotency middleware upstream,
+  and accepting a key would imply replay protection Meo does not provide. The
+  four moderation tools do carry it. An authorized caller never sends Meo's
+  proof-of-work token, which now guards anonymous askers only.
+- Answering is what publishes a question; there is no separate publish step,
+  and `approve_placement_question` is the way to publish one without answering.
+- Litter tools narrow a litter to `litter_id`, `name`, `species`,
+  `member_count`, `members` as pet summaries, and `version`. `member_count` is
+  what the caller may see, not the litter's true size, because Meo filters
+  members by visibility. `create_litter` requires `pet_type_id`, a two-letter
+  `country`, and `members`; Meo owns the litter size bounds and publishes them
+  as `litter_min_members` / `litter_max_members` on `/api/settings/public`, so
+  they are not repeated here. `split_up_litter` sends no `base_version`
+  because upstream runs no version check on that route; the exact expected
+  name pins the target instead. Neither `separate_pet_from_litter` nor
+  `split_up_litter` deletes a pet.
+- Pet summaries carry `litter` as `{litter_id, name}`, or `null` for a pet in
+  no litter. Without it an agent cannot tell that two pets are littermates.
+- `get_habit_pet_summary` takes `habit_id`, `weeks` from 1 through 104, and
+  optional ISO `end_date`. It defaults to 4 weeks rather than Meo's 52: the
+  rollup answers "who has lapsed", and a numeric habit over a year multiplies a
+  per-day series by every visible pet. Rows carry `pet_id`, `pet_name`,
+  nullable `last_yes_date`, nullable `days_since_last_yes`, and `series`;
+  `pet_photo_url` is narrowed away.
 - `get_habit_day_entries` takes `habit_id` and a non-future ISO `entry_date`.
   It returns the narrowed habit plus rows containing `entry_id`, `pet_id`,
   `pet_name`, `pet_photo_url`, nullable `value_int`, `is_current_pet`, and
@@ -534,8 +581,8 @@ The gateway then reads the target back, or verifies absence after a delete.
 ## Phase 2B pet sharing tools
 
 Sharing uses dedicated `sharing:read` and `sharing:write` scopes. The narrowed
-sharing endpoint—not the general pet profile endpoint—is the authority for
-collaborators and caller permissions. Outputs omit email addresses, historic
+sharing endpoint is the authority for collaborators and caller permissions, not
+the general pet profile endpoint. Outputs omit email addresses, historic
 relationships, creator IDs, and arbitrary upstream fields.
 
 - `PetSharing` contains `pet_id`, `pet_name`, nullable `version`, caller
@@ -797,7 +844,9 @@ exact `base_version` from the matching read/preview.
   Archive tools require `expected_archived` so a stale toggle cannot invert the
   wrong way.
 - Transaction create/update/delete require explicit account, type, major-unit
-  amount string, and date. Delete compares expected type/amount/date before
+  amount string, and date. Writes take the amount as a decimal string such as
+  `"12.34"` so no float rounds it; reads return `amount_minor` as an integer.
+  The two directions deliberately differ. Delete compares expected type/amount/date before
   mutation and verifies absence afterward.
 - Manager invitation create/revoke uses explicit ledger and invitation IDs plus
   ledger version. Recipient preview/accept/decline sends the 64-character bearer
@@ -918,7 +967,7 @@ authoritative `has_receipt` flag and transaction `version`.
 - `inspect_ledger_transaction_receipt(ledger_id, transaction_id)` downloads at
   most 10 MiB from Meo's authenticated receipt endpoint. Accepted content is
   JPEG, PNG, WebP, or PDF. Structured content contains only transaction ID,
-  presence, MIME type, byte size, SHA-256 digest, and version—never an
+  presence, MIME type, byte size, SHA-256 digest, and version. Never an
   authenticated URL, filename, or base64 body. Images are returned as one MCP
   `ImageContent`; PDFs as one MCP `EmbeddedResource` with a synthetic
   `meo-receipt:` URI and base64 blob. Absent receipts return stable structured
@@ -945,7 +994,7 @@ digests never enter logs or structured errors.
 
 The final audit compares the authority's registered API routes, generated
 OpenAPI paths, React user journeys, and legacy connector shapes against this
-catalog. The 172 live tools cover every agent-useful normal-user domain listed
+catalog. The 187 live tools cover every agent-useful normal-user domain listed
 in the roadmap. Routes are not duplicated merely because the SPA has a separate
 projection, compatibility alias, or telemetry call.
 

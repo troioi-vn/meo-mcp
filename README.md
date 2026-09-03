@@ -29,7 +29,7 @@ For exact client setup, see [Connect a client](docs/clients.md).
 
 ## What agents can do
 
-The gateway currently exposes 172 semantic tools for:
+The gateway currently exposes 187 semantic tools for:
 
 - pet profiles, photos, breeds/categories, lifecycle, and microchips
 - weights, vaccinations, medical records, and care habits
@@ -53,10 +53,11 @@ as user tools.
 
 ## Choose the right integration
 
-Use this MCP gateway when an OAuth-capable agent is helping a person directly.
-Use the [Meo Mai Moi REST API skill](https://github.com/troioi-vn/meo-mai-moi-skill)
-when building a direct API integration with a user-managed personal token.
-These are intentionally separate authorization models.
+Use this MCP gateway when an OAuth-capable agent is helping a person directly,
+and drive it with the
+[Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill). The former
+direct REST/personal-token skill is archived; never substitute a personal API
+token for MCP OAuth.
 
 ## Documentation
 

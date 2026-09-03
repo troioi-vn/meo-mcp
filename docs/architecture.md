@@ -39,14 +39,20 @@ Meo Mai Moi API ── authoritative user data and permission checks
 
 The transport is stateless Streamable HTTP with JSON responses. Stateless here
 means MCP requests do not depend on an application-process session; OAuth and
-grant state is still durable in PostgreSQL. The FastMCP session manager runs for
+grant state is still durable in PostgreSQL. The SDK session manager runs for
 the parent application's lifespan even in stateless mode.
+
+Protocol `2026-07-28` removed the `initialize` handshake and transport sessions:
+a modern client sends a tool call cold, carrying its protocol version and
+capabilities in the request's `_meta`, plus matching `Mcp-Protocol-Version`,
+`Mcp-Method` and `Mcp-Name` headers. The SDK still answers pre-2026 clients that
+open with `initialize`, so one deployment serves both generations.
 
 ## Component map
 
 | Module | Responsibility |
 |--------|----------------|
-| `main.py` | App factory, FastMCP server, tool registration, lifespan, health endpoint, callback route, and request guards |
+| `main.py` | App factory, `MCPServer` construction, tool registration, lifespan, health endpoint, callback route, and request guards |
 | `oauth.py` | Database-backed OAuth provider, allowed scopes, Meo consent redirect/exchange, token issue/rotation/revocation |
 | `meo_api.py` | Delegated Meo HTTP calls, response normalization, and upstream error mapping |
 | `security.py` | UTC/token helpers, SHA-256 digests, AES-256-GCM encryption, signed consent references, and structured-log redaction |
@@ -54,7 +60,7 @@ the parent application's lifespan even in stateless mode.
 | `config.py` | Environment-backed settings and derived issuer/resource URLs |
 | `migrations/` | Additive PostgreSQL schema history |
 
-FastMCP supplies the MCP transport and OAuth endpoint plumbing. Starlette owns
+The MCP SDK supplies the transport and OAuth endpoint plumbing. Starlette owns
 the composed HTTP application and middleware. Alembic manages schema changes.
 
 ## Data ownership
@@ -96,7 +102,7 @@ may guide a model, but it is never an authorization or safety control.
 
 This repository documents reusable architecture, public endpoints where useful,
 and the deployment mechanics required to understand committed artifacts. Live
-inventory—IPs, SSH identities, checkout paths, database identities,
-CI/repository IDs, and secret-manager locations—belongs only in the private
-operator runbook. Public contributors do not need that runbook to build, test,
-or understand this service.
+inventory belongs only in the private operator runbook: IPs, SSH identities,
+checkout paths, database identities, CI/repository IDs, and secret-manager
+locations. Public contributors do not need that runbook to build, test, or
+understand this service.
