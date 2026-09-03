@@ -72,8 +72,8 @@ run the complete local gates:
 ```bash
 uv sync --all-groups
 uv run pytest
-uv run ruff check src tests
-uv run ruff format --check src tests
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 git diff --check
 ```
 

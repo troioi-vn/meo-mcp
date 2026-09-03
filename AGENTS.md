@@ -38,8 +38,8 @@ Work lands on `dev`; pushing runs CI and deploys development. `main` deploys pro
 ```bash
 uv sync --all-groups
 uv run pytest
-uv run ruff check src tests
-uv run ruff format --check src tests
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 ```
 
 A new tool means updating `docs/tools.md` too; a test asserts it matches the implemented scope mapping. Commit messages stay short, no attribution trailers.

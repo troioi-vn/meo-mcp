@@ -11,8 +11,8 @@ does not need Meo credentials or PostgreSQL for the automated suite:
 ```bash
 uv sync --all-groups
 uv run pytest
-uv run ruff check src tests
-uv run ruff format --check src tests
+uv run ruff check src tests scripts
+uv run ruff format --check src tests scripts
 ```
 
 Tests create isolated SQLite stores and inject non-secret cryptographic test
@@ -61,8 +61,20 @@ which build answered.
 
 ### Driving a grant without a client
 
-An OAuth grant can be completed with an HTTP client alone, which is how the
-protocol surface gets exercised without waiting for a real MCP client: register
+`scripts/protocol_probe.py` does all of this and then checks the 2026-07-28
+surface: a cold `server/discover`, the catalog and its cache hint, a real
+`tools/call` through to Meo, and both header-mismatch rejections. It exits
+non-zero on any failure.
+
+```bash
+uv run python scripts/protocol_probe.py --email <seeded account> --password <password>
+```
+
+Run it after any transport change. Every client observed so far negotiates
+2025-06-18 and the legacy handshake, so ordinary traffic never touches the
+modern path and would not reveal a regression in it.
+
+The flow it automates, for when something breaks inside it: register
 via `/register`, call `/authorize` with S256 PKCE, follow the redirect to Meo's
 consent screen, sign in as a seeded account, `POST /api/mcp-auth/confirm` with
 the `request_ref`, follow the returned `redirect_url` back through
