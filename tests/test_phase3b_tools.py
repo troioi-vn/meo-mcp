@@ -1,4 +1,5 @@
 import base64
+import json
 from datetime import timedelta
 from ipaddress import ip_address
 from uuid import uuid4
@@ -427,4 +428,199 @@ async def test_send_message_fails_when_post_write_read_cannot_find_it(tmp_path) 
             )
     assert result["isError"] is True
     assert result["structuredContent"]["error"]["code"] == "post_write_verification_failed"
+    await engine.dispose()
+
+
+def _placement_request_fixture(response_id: int | None = None) -> tuple[dict, dict]:
+    request = {
+        "id": 7,
+        "pet_id": 4,
+        "request_type": "adoption",
+        "status": "open",
+        "updated_at": "v1",
+        "pet": {"id": 4, "name": "Miso"},
+    }
+    context = {"viewer_role": "helper"}
+    if response_id is not None:
+        context["my_response"] = {"id": response_id, "status": "pending"}
+    return request, context
+
+
+@pytest.mark.asyncio
+async def test_quick_response_omits_the_profile_and_never_reads_helper_profiles(tmp_path) -> None:
+    """Adoption and free fostering are answerable without a helper profile.
+
+    Meo resolves or creates one, so naming a profile is optional here.  The
+    gateway must not send a null profile, and must not demand `helpers:read`
+    from a caller who never named one to read.
+    """
+    app, engine, settings = await _app_with_token(tmp_path, ["placement:read", "placement:write"])
+    request, context = _placement_request_fixture()
+    after_context = {**context, "my_response": {"id": 31, "status": "pending"}}
+
+    with respx.mock:
+        respx.get("https://app.example.com/api/placement-requests/7").mock(
+            return_value=httpx.Response(200, json={"data": request})
+        )
+        me = respx.get("https://app.example.com/api/placement-requests/7/me")
+        me.side_effect = [
+            httpx.Response(200, json={"data": context}),
+            httpx.Response(200, json={"data": after_context}),
+        ]
+        created = respx.post("https://app.example.com/api/placement-requests/7/responses").mock(
+            return_value=httpx.Response(
+                201, json={"data": {"id": 31, "placement_request_id": 7, "status": "pending"}}
+            )
+        )
+        profiles = respx.get("https://app.example.com/api/helper-profiles/1").mock(
+            return_value=httpx.Response(200, json={"data": {"id": 1}})
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport, base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            result = await _call(
+                client,
+                "respond_to_placement_request",
+                {
+                    "placement_request_id": 7,
+                    "expected_pet_name": "Miso",
+                    "idempotency_key": str(uuid4()),
+                    "message": "I can take her.",
+                },
+            )
+
+    assert result["isError"] is False
+    assert not profiles.called
+    assert "helper_profile_id" not in json.loads(created.calls[0].request.content)
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_naming_a_helper_profile_still_verifies_it(tmp_path) -> None:
+    """The exact-target path keeps its own read, and still needs `helpers:read`."""
+    app, engine, settings = await _app_with_token(
+        tmp_path, ["placement:read", "placement:write", "helpers:read"]
+    )
+    request, context = _placement_request_fixture()
+    after_context = {**context, "my_response": {"id": 32, "status": "pending"}}
+
+    with respx.mock:
+        respx.get("https://app.example.com/api/placement-requests/7").mock(
+            return_value=httpx.Response(200, json={"data": request})
+        )
+        me = respx.get("https://app.example.com/api/placement-requests/7/me")
+        me.side_effect = [
+            httpx.Response(200, json={"data": context}),
+            httpx.Response(200, json={"data": after_context}),
+        ]
+        created = respx.post("https://app.example.com/api/placement-requests/7/responses").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "data": {
+                        "id": 32,
+                        "placement_request_id": 7,
+                        "helper_profile_id": 5,
+                        "status": "pending",
+                    }
+                },
+            )
+        )
+        profiles = respx.get("https://app.example.com/api/helper-profiles/5").mock(
+            return_value=httpx.Response(200, json={"data": {"id": 5}})
+        )
+        transport = httpx.ASGITransport(app=app)
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport, base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            result = await _call(
+                client,
+                "respond_to_placement_request",
+                {
+                    "placement_request_id": 7,
+                    "expected_pet_name": "Miso",
+                    "idempotency_key": str(uuid4()),
+                    "helper_profile_id": 5,
+                },
+            )
+
+    assert result["isError"] is False
+    assert profiles.called
+    assert json.loads(created.calls[0].request.content)["helper_profile_id"] == 5
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "endpoint", "before", "after"),
+    [
+        ("cancel_placement_request", "reject", "open", "cancelled"),
+        ("reopen_placement_request", "confirm", "cancelled", "open"),
+    ],
+)
+async def test_placement_lifecycle_tools_hit_the_right_upstream_action(
+    tmp_path, tool, endpoint, before, after
+) -> None:
+    """Upstream names these `reject` and `confirm`, but they cancel and re-open.
+
+    That mismatch is why both states were unreachable for so long, so the
+    binding from tool to endpoint is what this pins down.
+    """
+    app, engine, settings = await _app_with_token(tmp_path, ["placement:read", "placement:write"])
+    request = {
+        "id": 7,
+        "pet_id": 4,
+        "status": before,
+        "updated_at": "v1",
+        "pet": {"id": 4, "name": "Miso"},
+    }
+
+    with respx.mock:
+        detail = respx.get("https://app.example.com/api/placement-requests/7")
+        detail.side_effect = [
+            httpx.Response(200, json={"data": request}),
+            httpx.Response(200, json={"data": {**request, "status": after}}),
+        ]
+        respx.get("https://app.example.com/api/placement-requests/7/me").mock(
+            return_value=httpx.Response(200, json={"data": {"viewer_role": "owner"}})
+        )
+        acted = respx.post(f"https://app.example.com/api/placement-requests/7/{endpoint}").mock(
+            return_value=httpx.Response(200, json={"data": {**request, "status": after}})
+        )
+        wrong = respx.post(
+            "https://app.example.com/api/placement-requests/7/"
+            + ("confirm" if endpoint == "reject" else "reject")
+        ).mock(return_value=httpx.Response(200, json={"data": request}))
+
+        transport = httpx.ASGITransport(app=app)
+        async with (
+            app.router.lifespan_context(app),
+            httpx.AsyncClient(
+                transport=transport, base_url=str(settings.public_base_url)
+            ) as client,
+        ):
+            result = await _call(
+                client,
+                tool,
+                {
+                    "placement_request_id": 7,
+                    "expected_pet_id": 4,
+                    "expected_pet_name": "Miso",
+                    "base_version": "v1",
+                    "idempotency_key": str(uuid4()),
+                },
+            )
+
+    assert result["isError"] is False
+    assert acted.called
+    assert not wrong.called
+    assert json.loads(acted.calls[0].request.content)["base_version"] == "v1"
+    assert result["structuredContent"]["placement_request"]["status"] == after
     await engine.dispose()

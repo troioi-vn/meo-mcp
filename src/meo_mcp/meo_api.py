@@ -3958,31 +3958,110 @@ class MeoApi:
             raise
         self._verification_error("The placement request still exists after deletion.")
 
+    async def _placement_lifecycle_action(
+        self,
+        action: str,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+        expected_status: str,
+    ) -> dict[str, Any]:
+        await self._checked_placement(placement_request_id, expected_pet_id, expected_pet_name)
+        version, key = self._version(base_version), self._idempotency_key(idempotency_key)
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-requests/{placement_request_id}/{action}",
+            json_data={"base_version": version},
+            idempotency_key=key,
+            expected_statuses={200},
+        )
+        after = await self._verify(self.get_placement_request, placement_request_id)
+        if after["placement_request"].get("status") != expected_status:
+            self._verification_error(
+                f"The placement request is not {expected_status} after the change."
+            )
+        return {"placement_request": after["placement_request"], "verified": True}
+
+    async def cancel_placement_request(
+        self,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        # Upstream calls this endpoint `reject`, but it cancels the listing.
+        # Meo also rejects every outstanding response and notifies those
+        # helpers, so this is not a quiet state change.
+        return await self._placement_lifecycle_action(
+            "reject",
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+            "cancelled",
+        )
+
+    async def reopen_placement_request(
+        self,
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        # Upstream calls this endpoint `confirm`; it re-opens a cancelled or
+        # expired listing and clears an elapsed expiry.
+        return await self._placement_lifecycle_action(
+            "confirm",
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+            "open",
+        )
+
     async def respond_to_placement_request(
         self,
         placement_request_id: int,
-        helper_profile_id: int,
         expected_pet_name: str,
         idempotency_key: str,
+        helper_profile_id: int | None = None,
         message: str | None = None,
+        phone_number: str | None = None,
     ) -> dict[str, Any]:
         current = await self.get_placement_request(placement_request_id)
         if current["placement_request"].get("pet", {}).get("pet_name") != self._required_text(
             expected_pet_name, "expected_pet_name", 255
         ):
             self._error("target_mismatch", "The placement request pet does not match.", False)
-        profile = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
-        if profile.get("helper_profile_id") != helper_profile_id:
-            self._error("target_mismatch", "The helper profile does not match.", False)
-        delegated = await self._delegated_token("placement:read", "placement:write", "helpers:read")
+        # Meo made the profile optional: adoption and free fostering resolve the
+        # caller's active profile, or create one, when none is named.  Naming a
+        # profile is still an exact target, so it keeps its own verification --
+        # and only that path needs to read helper profiles at all.
+        scopes = ["placement:read", "placement:write"]
+        body: dict[str, Any] = {"message": self._optional_text(message, "message")}
+        if helper_profile_id is not None:
+            self._positive(helper_profile_id, "helper_profile_id")
+            profile = (await self.get_helper_profile(helper_profile_id))["helper_profile"]
+            if profile.get("helper_profile_id") != helper_profile_id:
+                self._error("target_mismatch", "The helper profile does not match.", False)
+            scopes.append("helpers:read")
+            body["helper_profile_id"] = helper_profile_id
+        if phone_number is not None:
+            body["phone_number"] = self._optional_text(phone_number, "phone_number", 20)
+        delegated = await self._delegated_token(*scopes)
         payload = await self._request(
             delegated,
             "POST",
             f"/api/placement-requests/{placement_request_id}/responses",
-            json_data={
-                "helper_profile_id": helper_profile_id,
-                "message": self._optional_text(message, "message"),
-            },
+            json_data=body,
             idempotency_key=self._idempotency_key(idempotency_key),
             expected_statuses={201},
         )

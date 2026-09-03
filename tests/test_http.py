@@ -404,6 +404,8 @@ async def test_authenticated_mcp_initialize_list_and_call_cross_asgi_boundary(tm
         "create_account_invitation",
         "revoke_account_invitation",
         "create_placement_request",
+        "cancel_placement_request",
+        "reopen_placement_request",
         "delete_placement_request",
         "respond_to_placement_request",
         "accept_placement_response",

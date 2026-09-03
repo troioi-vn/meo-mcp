@@ -2233,6 +2233,42 @@ def create_app(settings: Settings | None = None) -> Starlette:
         )
 
     @server.tool(annotations=update_annotations)
+    async def cancel_placement_request(
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Cancel an open listing; Meo also rejects every outstanding response."""
+        return await call(
+            api.cancel_placement_request,
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def reopen_placement_request(
+        placement_request_id: int,
+        expected_pet_id: int,
+        expected_pet_name: str,
+        base_version: str,
+        idempotency_key: str,
+    ) -> CallToolResult:
+        """Re-open a cancelled or expired listing, clearing an elapsed expiry."""
+        return await call(
+            api.reopen_placement_request,
+            placement_request_id,
+            expected_pet_id,
+            expected_pet_name,
+            base_version,
+            idempotency_key,
+        )
+
+    @server.tool(annotations=update_annotations)
     async def delete_placement_request(
         placement_request_id: int,
         expected_pet_id: int,
@@ -2253,19 +2289,21 @@ def create_app(settings: Settings | None = None) -> Starlette:
     @server.tool(annotations=create_annotations)
     async def respond_to_placement_request(
         placement_request_id: int,
-        helper_profile_id: int,
         expected_pet_name: str,
         idempotency_key: str,
+        helper_profile_id: int | None = None,
         message: str | None = None,
+        phone_number: str | None = None,
     ) -> CallToolResult:
-        """Submit one helper profile response to an explicit placement request."""
+        """Offer to take an exact pet; omit the profile for a quick response."""
         return await call(
             api.respond_to_placement_request,
             placement_request_id,
-            helper_profile_id,
             expected_pet_name,
             idempotency_key,
+            helper_profile_id,
             message,
+            phone_number,
         )
 
     @server.tool(annotations=update_annotations)
