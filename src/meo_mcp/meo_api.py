@@ -1031,6 +1031,107 @@ class MeoApi:
         payload = await self._get(delegated, f"/api/habits/{habit_id}/heatmap", params)
         return {"days": [self._habit_day_summary(item) for item in self._items(payload)]}
 
+    async def list_placement_questions(self, placement_request_id: int) -> dict[str, Any]:
+        self._positive(placement_request_id, "placement_request_id")
+        delegated = await self._delegated_token("placement:read")
+        payload = await self._get(
+            delegated, f"/api/placement-requests/{placement_request_id}/questions"
+        )
+        return {
+            "questions": [self._placement_question(item) for item in self._items(payload)],
+        }
+
+    async def ask_placement_question(
+        self,
+        placement_request_id: int,
+        asker_name: str,
+        question: str,
+        asker_email: str | None = None,
+    ) -> dict[str, Any]:
+        # Upstream runs no idempotency middleware on this route, so no key is
+        # accepted here: offering one would imply replay protection Meo does
+        # not provide. Meo's proof-of-work guard applies to anonymous askers
+        # only, so an authorized caller sends no `altcha` at all.
+        self._positive(placement_request_id, "placement_request_id")
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-requests/{placement_request_id}/questions",
+            json_data={
+                "asker_name": self._required_text(asker_name, "asker_name", 80),
+                "question": self._required_text(question, "question", 1000),
+                "asker_email": self._optional_text(asker_email, "asker_email", 255),
+            },
+            expected_statuses={200, 201},
+        )
+        return {"question": self._placement_question(self._object(payload)), "verified": True}
+
+    async def _placement_question_action(
+        self,
+        question_id: int,
+        action: str,
+        idempotency_key: str,
+        expected_status: str | None,
+        json_data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self._positive(question_id, "question_id")
+        delegated = await self._delegated_token("placement:read", "placement:write")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-questions/{question_id}/{action}",
+            json_data=json_data or {},
+            idempotency_key=self._idempotency_key(idempotency_key),
+            expected_statuses={200},
+        )
+        question = self._placement_question(self._object(payload))
+        if expected_status is not None and question.get("status") != expected_status:
+            self._verification_error(f"The question is not {expected_status} after the change.")
+        return {"question": question, "verified": True}
+
+    async def answer_placement_question(
+        self, question_id: int, answer: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        # Answering is what publishes a question; there is no separate step.
+        return await self._placement_question_action(
+            question_id,
+            "answer",
+            idempotency_key,
+            "published",
+            {"answer": self._required_text(answer, "answer", 2000)},
+        )
+
+    async def approve_placement_question(
+        self, question_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._placement_question_action(
+            question_id, "approve", idempotency_key, "published"
+        )
+
+    async def hide_placement_question(
+        self, question_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._placement_question_action(question_id, "hide", idempotency_key, "hidden")
+
+    async def unhide_placement_question(
+        self, question_id: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        return await self._placement_question_action(question_id, "unhide", idempotency_key, None)
+
+    async def translate_placement_question(self, question_id: int) -> dict[str, Any]:
+        # Only an already published, answered pair can be translated, and the
+        # route carries no idempotency middleware.
+        self._positive(question_id, "question_id")
+        delegated = await self._delegated_token("placement:read")
+        payload = await self._request(
+            delegated,
+            "POST",
+            f"/api/placement-questions/{question_id}/translate",
+            expected_statuses={200},
+        )
+        return {"question": self._placement_question(self._object(payload))}
+
     async def create_litter(
         self,
         pet_type_id: int,
@@ -5818,6 +5919,36 @@ class MeoApi:
         if not isinstance(payload, dict):
             cls._error("upstream_malformed", "Meo Mai Moi returned malformed data.", True, 200)
         return payload.get("data", payload)
+
+    @classmethod
+    def _placement_question(cls, item: dict[str, Any]) -> dict[str, Any]:
+        narrowed = {
+            "question_id": item.get("id"),
+            "pet_id": item.get("pet_id"),
+            "placement_request_id": item.get("placement_request_id"),
+            "asker_name": item.get("asker_name"),
+            "question": item.get("question"),
+            "question_locale": item.get("question_locale"),
+            "answer": item.get("answer"),
+            "answer_locale": item.get("answer_locale"),
+            "answered_by_name": item.get("answered_by_name"),
+            "answered_at": item.get("answered_at"),
+            "published_at": item.get("published_at"),
+            "is_answered": item.get("is_answered"),
+            "status": item.get("status"),
+        }
+        # Meo adds these only for a caller who may moderate the listing, and
+        # only sends translations when it has them, so their absence is
+        # meaningful and they are not defaulted in.
+        for key in (
+            "hidden_at",
+            "question_translation",
+            "answer_translation",
+            "machine_translated",
+        ):
+            if key in item:
+                narrowed[key] = item.get(key)
+        return narrowed
 
     @classmethod
     def _litter(cls, item: dict[str, Any]) -> dict[str, Any]:

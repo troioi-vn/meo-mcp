@@ -2325,6 +2325,50 @@ def create_app(settings: Settings | None = None) -> Starlette:
             expires_at,
         )
 
+    @server.tool(annotations=read_annotations)
+    async def list_placement_questions(placement_request_id: int) -> CallToolResult:
+        """List the Q&A for a listing; moderators also see pending and hidden."""
+        return await call(api.list_placement_questions, placement_request_id)
+
+    @server.tool(annotations=create_annotations)
+    async def ask_placement_question(
+        placement_request_id: int,
+        asker_name: str,
+        question: str,
+        asker_email: str | None = None,
+    ) -> CallToolResult:
+        """Ask a public question about a listing; it stays unpublished until answered."""
+        return await call(
+            api.ask_placement_question, placement_request_id, asker_name, question, asker_email
+        )
+
+    @server.tool(annotations=update_annotations)
+    async def answer_placement_question(
+        question_id: int, answer: str, idempotency_key: str
+    ) -> CallToolResult:
+        """Answer one question, which is what publishes it to the listing."""
+        return await call(api.answer_placement_question, question_id, answer, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def approve_placement_question(question_id: int, idempotency_key: str) -> CallToolResult:
+        """Publish one question without answering it."""
+        return await call(api.approve_placement_question, question_id, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def hide_placement_question(question_id: int, idempotency_key: str) -> CallToolResult:
+        """Hide one published question from the public listing."""
+        return await call(api.hide_placement_question, question_id, idempotency_key)
+
+    @server.tool(annotations=update_annotations)
+    async def unhide_placement_question(question_id: int, idempotency_key: str) -> CallToolResult:
+        """Restore one hidden question to the public listing."""
+        return await call(api.unhide_placement_question, question_id, idempotency_key)
+
+    @server.tool(annotations=read_annotations)
+    async def translate_placement_question(question_id: int) -> CallToolResult:
+        """Translate one already published question and answer pair."""
+        return await call(api.translate_placement_question, question_id)
+
     @server.tool(annotations=update_annotations)
     async def cancel_placement_request(
         placement_request_id: int,

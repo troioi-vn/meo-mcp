@@ -87,6 +87,13 @@ part of the end-user tool surface.
 | `list_chat_messages` | Live | Page through one explicit chat without changing read receipts | `messages:read` | `messages:read` (legacy PAT: `read`) | side-effect-free `GET /api/msg/chats/{chat_id}/messages` | Read | Critical; private message bodies and image URLs |
 | `get_unread_message_count` | Live | Count unread messages without marking any chat read | `messages:read` | `messages:read` (legacy PAT: `read`) | `GET /api/msg/unread-count` | Read | Moderate; private activity metadata |
 | `create_placement_request` | Live | Create one explicit pet placement request | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `create`) | `POST /api/placement-requests`; verification reads | Create | High; publishes placement intent |
+| `list_placement_questions` | Live | Read the public Q&A for a listing | `placement:read` | `placement:read` (legacy PAT: `read`) | `GET /api/placement-requests/{id}/questions` | Read | Moderate; moderators additionally see pending and hidden questions |
+| `ask_placement_question` | Live | Ask a public question about a listing | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `create`) | `POST /api/placement-requests/{id}/questions` | Create | Moderate; nothing is public until someone answers or approves it |
+| `answer_placement_question` | Live | Answer one question, publishing the pair | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/answer`; status verification | Update | High; publishes to a public listing |
+| `approve_placement_question` | Live | Publish one question without answering it | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/approve`; status verification | Update | High; publishes to a public listing |
+| `hide_placement_question` | Live | Hide one published question | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/hide`; status verification | Update | Moderate; moderation |
+| `unhide_placement_question` | Live | Restore one hidden question | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | `POST /api/placement-questions/{id}/unhide` | Update | Moderate; moderation |
+| `translate_placement_question` | Live | Translate one published question and answer pair | `placement:read` | `placement:read` (legacy PAT: `read`) | `POST /api/placement-questions/{id}/translate` | Read | Low; translation of already public text |
 | `cancel_placement_request` | Live | Cancel an open listing after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | request read; `POST /api/placement-requests/{id}/reject`; status verification | Update | High; also rejects every outstanding response and notifies those helpers |
 | `reopen_placement_request` | Live | Re-open a cancelled or expired listing after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `update`) | request read; `POST /api/placement-requests/{id}/confirm`; status verification | Update | Medium; republishes placement intent and clears an elapsed expiry |
 | `delete_placement_request` | Live | Delete an exact owned request after pet/name/version preview | `placement:read` + `placement:write` | `placement:read` + `placement:write` (legacy PAT: `read` + `delete`) | request read; `DELETE /api/placement-requests/{id}`; absence verification | Delete | High; removes request context |
@@ -482,6 +489,20 @@ The gateway then reads the target back, or verifies absence after a delete.
   52), and optional ISO `end_date`. It returns daily rows containing only
   `date`, nullable `average_value`, nullable `display_value`, `entry_count`,
   `visible_pet_count`, and nullable `normalized_intensity`.
+- Placement question tools narrow a question to `question_id`, `pet_id`,
+  `placement_request_id`, `asker_name`, `question`, `question_locale`,
+  `answer`, `answer_locale`, `answered_by_name`, `answered_at`,
+  `published_at`, `is_answered`, and `status`. `hidden_at` and the translation
+  fields are passed through only when Meo sends them, because it sends
+  `hidden_at` to moderators alone and translations only where they exist; their
+  absence is information and is never defaulted in.
+- `ask_placement_question` and `translate_placement_question` take no
+  idempotency key: those two routes carry no idempotency middleware upstream,
+  and accepting a key would imply replay protection Meo does not provide. The
+  four moderation tools do carry it. An authorized caller never sends Meo's
+  proof-of-work token, which now guards anonymous askers only.
+- Answering is what publishes a question; there is no separate publish step,
+  and `approve_placement_question` is the way to publish one without answering.
 - Litter tools narrow a litter to `litter_id`, `name`, `species`,
   `member_count`, `members` as pet summaries, and `version`. `member_count` is
   what the caller may see, not the litter's true size, because Meo filters

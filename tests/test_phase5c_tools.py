@@ -314,7 +314,7 @@ async def test_phase5c_tools_are_discoverable(tmp_path) -> None:
         )
 
     names = {tool["name"] for tool in response.json()["result"]["tools"]}
-    assert len(names) == 180
+    assert len(names) == 187
     assert {
         "inspect_ledger_transaction_receipt",
         "upload_ledger_transaction_receipt_from_url",
