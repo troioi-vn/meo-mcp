@@ -4,7 +4,7 @@ Protocol-independent agent gateway for Meo Mai Moi. MCP clients (Codex, Cursor, 
 
 Meo Mai Moi is the authority. This repo is a thin adapter: normalize inputs, narrow responses, translate errors. The test, from `docs/architecture.md`: could Meo enforce this without trusting the gateway? If not, it belongs upstream.
 
-`../meo-mai-moi` is the main app (API authority, `/mcp-connect`, `/api/mcp-auth/*`). Live hosts, secrets, and CI identities live only in the private operator runbook, found via workstation-level instructions.
+`../meo-mai-moi` is the main app (API authority, `/mcp-connect`, `/api/mcp-auth/*`). `../skills-public/meo-mcp-skill` is the agent-facing gateway skill and supersedes in-repo `.agents/skills/meo-mcp/`; update the published tree, not the copy here. Live hosts, secrets, and CI identities live only in the private operator runbook, found via workstation-level instructions.
 
 ## Stack
 
@@ -56,17 +56,9 @@ A new tool means updating `docs/tools.md` too; a test asserts it matches the imp
 | Trust boundaries? | `docs/security.md` |
 | Running locally? | `docs/development.md` |
 | How does it ship? | `docs/deployment.md`, `docs/release.md` |
-| Smoke a live gateway? | `.agents/skills/meo-mcp/SKILL.md` |
+| Smoke a live gateway? | `../skills-public/meo-mcp-skill` |
 | What is planned? | `todo/` |
 
 ## Keeping this file short
 
-Budget: 600 words. Adding something means moving something else out. If a lint rule, a type, or a test already catches it, it does not belong here.
-
-| Lesson | Goes to |
-|---|---|
-| A tool's shape, scope, or risk | `docs/tools.md` |
-| A client-specific quirk | `docs/clients.md` |
-| A failure contract | `docs/errors.md` |
-| Why a line of code is odd | a comment beside it |
-| Live hosts, secrets, identities | private operator runbook |
+Budget: 600 words. Adding something means moving something else out. If a lint rule, a type, or a test already catches it, it does not belong here. Route lessons by the table above; why a line of code is odd goes in a comment beside it.

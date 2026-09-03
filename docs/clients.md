@@ -32,10 +32,8 @@ These neighboring instruction surfaces have different jobs:
 
 - The public [Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill)
   is the opt-in, consumer-facing workflow for connecting and using this OAuth
-  gateway across SKILL.md-compatible agents.
-- The [Meo Mai Moi REST API skill](https://github.com/troioi-vn/meo-mai-moi-skill)
-  is a separate direct-API/PAT integration path. Do not substitute a personal
-  API token for MCP OAuth.
+  gateway across SKILL.md-compatible agents. Never substitute a personal API
+  token for MCP OAuth; the former direct-API/PAT skill is archived.
 - [`AGENTS.md`](../AGENTS.md) and the in-repository
   [gateway skill](../.agents/skills/meo-mcp/SKILL.md) are maintainer-facing
   engineering guidance, not installation instructions for end users.

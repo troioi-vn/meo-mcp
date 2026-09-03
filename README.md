@@ -53,10 +53,11 @@ as user tools.
 
 ## Choose the right integration
 
-Use this MCP gateway when an OAuth-capable agent is helping a person directly.
-Use the [Meo Mai Moi REST API skill](https://github.com/troioi-vn/meo-mai-moi-skill)
-when building a direct API integration with a user-managed personal token.
-These are intentionally separate authorization models.
+Use this MCP gateway when an OAuth-capable agent is helping a person directly,
+and drive it with the
+[Meo Mai Moi MCP skill](https://github.com/troioi-vn/meo-mcp-skill). The former
+direct REST/personal-token skill is archived; never substitute a personal API
+token for MCP OAuth.
 
 ## Documentation
 
