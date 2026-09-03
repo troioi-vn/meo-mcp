@@ -29,7 +29,7 @@ For exact client setup, see [Connect a client](docs/clients.md).
 
 ## What agents can do
 
-The gateway currently exposes 172 semantic tools for:
+The gateway currently exposes 187 semantic tools for:
 
 - pet profiles, photos, breeds/categories, lifecycle, and microchips
 - weights, vaccinations, medical records, and care habits

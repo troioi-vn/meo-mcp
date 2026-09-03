@@ -994,7 +994,7 @@ digests never enter logs or structured errors.
 
 The final audit compares the authority's registered API routes, generated
 OpenAPI paths, React user journeys, and legacy connector shapes against this
-catalog. The 172 live tools cover every agent-useful normal-user domain listed
+catalog. The 187 live tools cover every agent-useful normal-user domain listed
 in the roadmap. Routes are not duplicated merely because the SPA has a separate
 projection, compatibility alias, or telemetry call.
 

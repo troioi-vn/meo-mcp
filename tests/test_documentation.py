@@ -141,3 +141,34 @@ def test_ci_commit_messages_are_read_from_runtime_environment() -> None:
 
     assert '"${CI_COMMIT_MESSAGE}"' not in workflow
     assert workflow.count('"$${CI_COMMIT_MESSAGE}"') == 5
+
+
+def test_documented_tool_counts_match_the_server() -> None:
+    """Three places carried the catalog size and only the tests were updated
+    when it changed, so a stale number reached a release-ready README twice.
+    The docs are now checked against the server that answers `tools/list`."""
+    import asyncio
+    import base64
+    import gc
+
+    from mcp.server import MCPServer
+
+    from meo_mcp.config import Settings
+    from meo_mcp.main import create_app
+
+    create_app(
+        Settings(
+            database_url="sqlite+aiosqlite:///ignored.db",
+            token_encryption_key=base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode(),
+            meo_connector_hmac_secret="hmac",
+            meo_connector_api_key="key",
+        )
+    )
+    servers = [obj for obj in gc.get_objects() if isinstance(obj, MCPServer)]
+    live = len(asyncio.run(servers[-1].list_tools()))
+
+    for name in ("README.md", "docs/tools.md"):
+        text = (ROOT / name).read_text()
+        assert f"{live} semantic tools" in text or f"{live} live tools" in text, (
+            f"{name} does not cite the live catalog size of {live}"
+        )
