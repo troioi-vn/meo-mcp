@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import parse_qs, urlsplit
 
 import structlog
@@ -83,6 +83,14 @@ Health:
 """
 
 
+COUNTRY_DESCRIPTION = "Two-letter ISO 3166-1 alpha-2 country code, such as VN or GB."
+Country = Annotated[str, Field(description=COUNTRY_DESCRIPTION)]
+OptionalCountry = Annotated[str | None, Field(description=COUNTRY_DESCRIPTION)]
+BirthMonthYear = Annotated[
+    str | None, Field(description="Month of birth as YYYY-MM, such as 2021-07.")
+]
+
+
 class HabitEntryInput(BaseModel):
     pet_id: int = Field(ge=1)
     value_int: int | None = None
@@ -108,6 +116,21 @@ class HelperContactInput(BaseModel):
     value: str = Field(min_length=1, max_length=255)
 
 
+def mcp_protocol_fields(request: Request) -> dict[str, str | None]:
+    """Which MCP generation this caller speaks, for the request log.
+
+    2026-07-28 dropped the `initialize` handshake, so every modern request
+    carries its own `Mcp-Protocol-Version` and `Mcp-Method`; an older client
+    sends neither until it has handshaken.  Logging both is the only way to
+    learn what a real client negotiates: no MCP client exposes the handshake to
+    the agent running inside it, and nothing else on the wire records it.
+    """
+    return {
+        "mcp_protocol_version": request.headers.get("mcp-protocol-version"),
+        "mcp_method": request.headers.get("mcp-method"),
+    }
+
+
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request.state.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
@@ -123,6 +146,7 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 method=request.method,
                 endpoint=request.url.path,
                 latency_ms=round((time.monotonic() - started) * 1000, 2),
+                **mcp_protocol_fields(request),
             )
             raise
         else:
@@ -134,6 +158,7 @@ class GuardMiddleware(BaseHTTPMiddleware):
                 endpoint=request.url.path,
                 status=response.status_code,
                 latency_ms=round((time.monotonic() - started) * 1000, 2),
+                **mcp_protocol_fields(request),
             )
             return response
         finally:
@@ -413,11 +438,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def create_pet(
         name: str,
         species: str,
-        country: str,
+        country: Country,
         idempotency_key: str,
         sex: Literal["male", "female", "not_specified", "unknown"] | None = None,
         birth_date: date | None = None,
-        birth_month_year: str | None = None,
+        birth_month_year: BirthMonthYear = None,
         age_months: int | None = None,
         description: str | None = None,
         category_ids: list[int] | None = None,
@@ -448,7 +473,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         species: str | None = None,
         sex: Literal["male", "female", "not_specified", "unknown"] | None = None,
         birth_date: date | None = None,
-        birth_month_year: str | None = None,
+        birth_month_year: BirthMonthYear = None,
         age_months: int | None = None,
         description: str | None = None,
         category_ids: list[int] | None = None,
@@ -1186,7 +1211,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     async def list_placement_opportunities(
         request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]
         | None = None,
-        country: str | None = None,
+        country: OptionalCountry = None,
         city: str | None = None,
         pet_type_id: int | None = None,
     ) -> CallToolResult:
@@ -1207,7 +1232,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @server.tool(annotations=read_annotations)
     async def search_helper_profiles(
-        country: str | None = None,
+        country: OptionalCountry = None,
         city: str | None = None,
         request_type: Literal["permanent", "foster_free", "foster_paid", "pet_sitting"]
         | None = None,
@@ -1241,7 +1266,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @server.tool(annotations=read_annotations)
     async def list_helper_location_options(
-        country: str | None = None, search: str | None = None
+        country: OptionalCountry = None, search: str | None = None
     ) -> CallToolResult:
         """List countries or search cities for helper-profile and placement filtering."""
         return await call(api.list_helper_location_options, country, search)
@@ -1249,7 +1274,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
     @server.tool(annotations=create_annotations)
     async def create_helper_city_option(
         name: str,
-        country: str,
+        country: Country,
         idempotency_key: str,
         description: str | None = None,
     ) -> CallToolResult:
@@ -2351,7 +2376,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     @server.tool(annotations=create_annotations)
     async def create_helper_profile(
-        country: str,
+        country: Country,
         city_ids: list[int],
         phone_number: str,
         experience: str,
@@ -2391,7 +2416,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         helper_profile_id: int,
         base_version: str,
         idempotency_key: str,
-        country: str | None = None,
+        country: OptionalCountry = None,
         city_ids: list[int] | None = None,
         phone_number: str | None = None,
         experience: str | None = None,

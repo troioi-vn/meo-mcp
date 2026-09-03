@@ -69,6 +69,25 @@ codex mcp login meo-mai-moi --scopes pets:read,health:read
 codex mcp list
 ```
 
+`codex mcp add` opens the OAuth flow by itself, asking for the full default
+scope set. To authorize narrowly, cancel that browser flow and run the
+`codex mcp login --scopes` line instead; the server entry survives the
+cancellation.
+
+Adding the server does not give tools to a Codex conversation that is already
+running. Three states have to be checked separately, and the first two do not
+imply the third:
+
+1. `codex mcp list` shows the server entry.
+2. OAuth reports success.
+3. The current session exposes native `mcp__meo_mai_moi__*` tools.
+
+After adding the server or changing its scopes, close and reopen Codex CLI and
+start a fresh session. Confirm projection before the first call by checking
+that `mcp__meo_mai_moi__list_pets` exists. Do not reach for `codex exec` when
+projection is missing: it starts a separate client with its own approval
+policy, so what it can or cannot do says nothing about the running session.
+
 Request only `pets:read` when the client needs pet profiles but not health
 history. For a broad connect request, use the Everyday care scope set above.
 OAuth accepts either narrow scope or a documented combination, and each tool

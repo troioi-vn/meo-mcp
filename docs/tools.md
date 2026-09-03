@@ -797,7 +797,9 @@ exact `base_version` from the matching read/preview.
   Archive tools require `expected_archived` so a stale toggle cannot invert the
   wrong way.
 - Transaction create/update/delete require explicit account, type, major-unit
-  amount string, and date. Delete compares expected type/amount/date before
+  amount string, and date. Writes take the amount as a decimal string such as
+  `"12.34"` so no float rounds it; reads return `amount_minor` as an integer.
+  The two directions deliberately differ. Delete compares expected type/amount/date before
   mutation and verifies absence afterward.
 - Manager invitation create/revoke uses explicit ledger and invitation IDs plus
   ledger version. Recipient preview/accept/decline sends the 64-character bearer

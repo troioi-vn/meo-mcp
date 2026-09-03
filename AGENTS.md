@@ -57,7 +57,6 @@ A new tool means updating `docs/tools.md` too; a test asserts it matches the imp
 | Running locally? | `docs/development.md` |
 | How does it ship? | `docs/deployment.md`, `docs/release.md` |
 | Smoke a live gateway? | `../skills-public/meo-mcp-skill` |
-| What is planned? | `todo/` |
 
 ## Keeping this file short
 

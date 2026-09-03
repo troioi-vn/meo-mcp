@@ -105,7 +105,51 @@ async def test_request_log_is_structured_and_omits_query_values(caplog) -> None:
     assert request_event["endpoint"] == "/health"
     assert request_event["status"] == 200
     assert isinstance(request_event["latency_ms"], float)
+    # A caller that sends no MCP headers is a legacy-generation client; the
+    # field has to be present and empty rather than absent, or a log query
+    # cannot tell "did not send" from "was never recorded".
+    assert request_event["mcp_protocol_version"] is None
+    assert request_event["mcp_method"] is None
     assert "must-not-appear" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_request_log_records_the_protocol_version_a_modern_client_sends(caplog) -> None:
+    """No MCP client reports its negotiated revision to the agent inside it, so
+    the request log is the only place this gateway can learn what real clients
+    speak.  That makes the field acceptance evidence, not decoration."""
+    key = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()
+    app = create_app(
+        Settings(
+            database_url="sqlite+aiosqlite:///ignored.db",
+            token_encryption_key=key,
+            meo_connector_hmac_secret="hmac",
+            meo_connector_api_key="key",
+        )
+    )
+    transport = httpx.ASGITransport(app=app)
+    with caplog.at_level(logging.INFO):
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url=str(app.state.settings.public_base_url),
+        ) as client:
+            await client.get(
+                "/health",
+                headers={
+                    "X-Request-ID": "protocol-log-test",
+                    "Mcp-Protocol-Version": LATEST_PROTOCOL_VERSION,
+                    "Mcp-Method": "tools/call",
+                },
+            )
+
+    events = [json.loads(record.message) for record in caplog.records]
+    request_event = next(
+        event
+        for event in events
+        if event.get("event") == "http_request" and event.get("request_id") == "protocol-log-test"
+    )
+    assert request_event["mcp_protocol_version"] == LATEST_PROTOCOL_VERSION
+    assert request_event["mcp_method"] == "tools/call"
 
 
 @pytest.mark.asyncio
