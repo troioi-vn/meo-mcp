@@ -41,6 +41,8 @@ async def test_health_and_oauth_challenge_are_exposed() -> None:
     ) as client:
         health = await client.get("/health")
         assert health.status_code == 200
+        # Operators read this to confirm which build answered.
+        assert health.json() == {"status": "ok", "version": SERVER_VERSION}
         metadata = await client.get("/.well-known/oauth-protected-resource/mcp")
         response = await client.post("/mcp", json={})
     assert response.status_code == 401

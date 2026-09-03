@@ -2594,7 +2594,10 @@ def create_app(settings: Settings | None = None) -> Starlette:
         )
 
     async def health(_: Request) -> Response:
-        return JSONResponse({"status": "ok"})
+        # The version is here so "did my deploy land?" is answerable from
+        # outside the host.  Without it the only way to tell one build from
+        # another is SSH, which the person asking usually does not have.
+        return JSONResponse({"status": "ok", "version": SERVER_VERSION})
 
     async def landing(_: Request) -> Response:
         return PlainTextResponse(

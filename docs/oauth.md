@@ -40,6 +40,25 @@ client was not registered with. Clients that pass an explicit non-empty scope
 subset at registration or authorize keep that subset; `/authorize` never invents
 scopes beyond the request.
 
+### Client ID Metadata Documents: deliberately deferred
+
+Revision 2026-07-28 deprecates Dynamic Client Registration in favour of Client
+ID Metadata Documents, where the `client_id` is an HTTPS URL the authorization
+server fetches to learn the client's metadata. This gateway has not adopted
+CIMD, and that is a decision rather than an oversight.
+
+DCR still works, no client has dropped it, and CIMD is independent of every
+other part of the 2026-07-28 adoption: it touches registration only, and
+nothing in the transport, tool, or scope surface depends on it. Adopting it
+means a metadata cache with its own TTL and staleness policy, RFC 9207 `iss` on
+authorization responses, `client_id_metadata_document_supported` in our own
+authorization-server metadata, and a nullable client origin threaded through
+Meo's consent screen, since a DCR client has no document to have an origin
+from. That is real work with no user waiting on it.
+
+Revisit when a real client fails to register, or when a spec revision removes
+DCR outright rather than deprecating it.
+
 ## Authorization-code flow
 
 ```text
