@@ -290,6 +290,11 @@ steps:
 
   notify_failure:
     image: curlimages/curl:8.16.0
+    depends_on:
+      - name: deploy_dev
+        optional: true
+      - name: deploy_prod
+        optional: true
     when:
       - status: failure
         branch: [dev, main]
