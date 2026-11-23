@@ -148,6 +148,10 @@ async def test_refusals_map_to_oauth_errors(tmp_path) -> None:
                 "/token",
                 data={"grant_type": "client_credentials", "client_id": "a", "client_secret": "b"},
             )
+            route.mock(return_value=httpx.Response(422, json={"message": "too long"}))
+            malformed = await client.post(
+                "/token", data=form(client_id="x" * 99, client_secret="b")
+            )
             route.mock(side_effect=httpx.ConnectError("down"))
             down = await client.post("/token", data=form(client_id="a", client_secret="b"))
 
@@ -159,6 +163,7 @@ async def test_refusals_map_to_oauth_errors(tmp_path) -> None:
     assert (missing.status_code, missing.json()["error"]) == (401, "invalid_client")
     assert (both.status_code, both.json()["error"]) == (400, "invalid_request")
     assert (no_resource.status_code, no_resource.json()["error"]) == (400, "invalid_target")
+    assert (malformed.status_code, malformed.json()["error"]) == (401, "invalid_client")
     assert (down.status_code, down.json()["error"]) == (503, "server_error")
     async with sessions() as session:
         assert (await session.scalars(select(Grant))).all() == []

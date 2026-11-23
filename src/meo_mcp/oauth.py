@@ -566,7 +566,8 @@ async def exchange_client_credentials(
     except httpx.HTTPError as exc:
         raise ClientCredentialsError("server_error", "Meo is unavailable.", 503) from exc
 
-    if response.status_code == 401:
+    # 422 is Meo's validation answer to a malformed id or secret.
+    if response.status_code in {401, 422}:
         raise ClientCredentialsError("invalid_client", "Client authentication failed.", 401)
     if response.status_code == 400:
         raise ClientCredentialsError("invalid_scope", "Requested scope exceeds the client's.")
