@@ -1,73 +1,24 @@
 # Release runbook
 
-Use this runbook to publish a Meo MCP gateway release (`vX.Y.Z`). Routine work
-lands on `dev`; `main` is the production release target.
+Release an accepted development deployment through a PR from `dev` into
+`main`. The gateway has its own SemVer tags and GitHub Releases.
 
-## Core rules
+## Prepare the candidate
 
-- Release from an accepted `dev` deployment, never from an untested local tree.
-- Keep the version in `pyproject.toml` equal to the release tag without its `v`
-  prefix.
-- Promote with an intentional non-fast-forward merge from `dev` into `main`.
-- Create an annotated tag on the resulting `main` merge commit.
-- Push only the intended tag; never use `git push --tags`.
-- A pushed tag and a GitHub Release are separate objects. Publish both.
-- Production migrations are additive. Roll back application code to a prior SHA
-  without downgrading the database.
-- Live targets, CI identifiers, credentials, and recovery commands stay in the
-  private operator runbook.
-
-## 1. Preflight
-
-Run from the repository root:
+Fetch the protected branches and tags.
 
 ```bash
-git fetch --all --tags --prune
-git status --short --branch
-git branch --show-current
-git tag -l 'v*' --sort=version:refname | tail -n 10
+git fetch origin --prune --tags
+git tag -l 'v*' --sort=-version:refname | head
 ```
 
-Confirm that:
+Choose the next version, then update `project.version` in `pyproject.toml` and
+run `uv lock` on a branch based on `origin/dev`. Open a version-bump PR into
+`dev` using [the Git workflow](git-workflow.md). Draft the release notes from
+the PRs and commits since the previous tag. Include the changes users or
+operators need to know about.
 
-- the current branch is `dev`
-- the worktree contains only the intended release changes
-- `dev` and `main` match their remote tracking branches before new commits
-- no public diff contains credentials or private infrastructure inventory
-- the previous release tag, if any, is known
-
-## 2. Choose and record the version
-
-Choose the next semantic version. For example:
-
-```bash
-NEW=v0.1.1
-OLD=v0.1.0
-```
-
-Update `project.version` in `pyproject.toml` to `${NEW#v}`. Refresh the lockfile
-when the version change affects it:
-
-```bash
-uv lock
-rg -n 'version = "' pyproject.toml uv.lock
-```
-
-The first formal release may use the already-recorded project version when no
-earlier tag exists.
-
-## 3. Review and validate the release candidate
-
-For an existing release history, review the delta:
-
-```bash
-git log --oneline --no-merges "${OLD}..HEAD"
-git log --oneline --merges "${OLD}..HEAD"
-git diff --stat "${OLD}..HEAD"
-```
-
-For the first release, review the full history and current tree instead. Then
-run the complete local gates:
+Run the complete local gate before opening the PR.
 
 ```bash
 uv sync --all-groups
@@ -77,107 +28,59 @@ uv run ruff format --check src tests scripts
 git diff --check
 ```
 
-Commit the release candidate deliberately on `dev`, including the version bump
-when one is required:
+After the bump PR merges, confirm Woodpecker passed and deployed the exact
+`origin/dev` SHA. Check public and loopback `/health`, OAuth and protected
+resource metadata, and the unauthenticated MCP `401` challenge. When OAuth or
+tools changed, complete a narrow real-client OAuth flow, run `tools/list`,
+and call the smallest representative tool.
+
+## Promote to production
+
+Get the maintainer's approval after development acceptance. Open a release PR
+with the version and release notes. Set `NEW` to the version tag, such as
+`v0.2.1`, and `NOTES` to the release notes file. Recheck development
+acceptance if `dev` advances while the PR is open.
 
 ```bash
-git add <intended-paths>
-git commit -m "<focused release-candidate message>"
-git push origin dev
+gh pr create --base main --head dev --title "Release ${NEW}" --body-file "${NOTES}"
 ```
 
-Wait for the development pipeline to succeed. Verify the exact deployed SHA,
-the public and loopback `/health` endpoints, OAuth/resource metadata, and an
-unauthenticated MCP `401` challenge. When auth behavior or the tool surface
-changed, also complete a narrow real-client OAuth flow, `tools/list`, and the
-smallest representative tool call.
+Wait for `ci/woodpecker/pr/test` to pass and merge using GitHub's
+**Create a merge commit** option. The merge starts the production pipeline.
+Confirm that the merge commit's tree matches the accepted development commit.
 
-## 4. Promote to production
+CI reruns the gate on the merge commit and deploys after it passes. Verify the
+exact deployed SHA and the public and loopback health endpoints. Repeat the
+applicable OAuth and tool checks from development. Keep the private operator
+runbook handy for live SHA verification, deployment logs, and recovery commands.
 
-Only after development acceptance:
+## Tag and publish
 
-```bash
-git checkout main
-git pull --ff-only origin main
-git merge --no-ff dev -m "Merge dev into main for ${NEW} release"
-```
-
-Create an annotated tag on that merge commit. Draft a concise title, one short
-summary paragraph, and flat bullets describing meaningful user-facing or
-operator-facing changes:
+Use the merge commit recorded by GitHub for the release PR. Confirm that it
+matches the deployed SHA and carries the intended version. Set `PR` to the
+merged release PR number.
 
 ```bash
-git tag -a "${NEW}" \
-  -m "${NEW} - <short title>" \
-  -m "<release summary and bullet list>"
-```
-
-Push `main` first, monitor the production deployment to success, and verify its
-exact SHA plus public/loopback health. Then publish only the intended tag:
-
-```bash
-git push origin main
-git push origin "${NEW}"
-```
-
-Create the GitHub Release from the annotated tag:
-
-```bash
-gh release create "${NEW}" \
-  --verify-tag \
-  --notes-from-tag \
-  --title "${NEW} - <short title>" \
-  --latest
-```
-
-## 5. Post-release acceptance and branch sync
-
-Verify the release object and production boundary:
-
-```bash
-git show -s --oneline "${NEW}"
+git fetch origin main
+MERGE=$(gh pr view "${PR}" --json mergeCommit --jq '.mergeCommit.oid')
+git show "${MERGE}:pyproject.toml"
+git tag -a "${NEW}" "${MERGE}" -m "${NEW} - <short title>" -F "${NOTES}"
+git push origin "refs/tags/${NEW}"
+gh release create "${NEW}" --verify-tag --latest \
+  --title "${NEW} - <short title>" --notes-file "${NOTES}"
 gh release view "${NEW}"
-curl -fsS https://mcp.meo-mai-moi.com/health
-curl -fsS https://mcp.meo-mai-moi.com/.well-known/oauth-protected-resource/mcp
-curl -fsS https://mcp.meo-mai-moi.com/.well-known/oauth-authorization-server
 ```
 
-If OAuth behavior changed, reconnect a real client and confirm discovery plus a
-narrow read call. If tools changed, verify their live schema and the least risky
-representative call. Inspect only redacted logs and retain no tokens, callback
-parameters, or personal tool output.
+Leave `dev` at its own tip. The
+release merge commit makes that tip an ancestor of `main`, so the next
+release PR can merge without a sync back into `dev`.
 
-Finally, align `dev` with the production merge and accept the resulting
-development deployment:
+## Recover from a failed release
 
-```bash
-git checkout dev
-git merge main --ff-only
-git push origin dev
-```
+Fix a failed candidate through a PR into `dev`. If production needs a rollback,
+deploy the preceding known-good application SHA against the current additive
+schema. Use the operator runbook for the rollback.
 
-## Failure handling
-
-- If local validation or the development pipeline fails, fix the candidate on
-  `dev`; do not promote it.
-- If the production pipeline fails after `main` is pushed, inspect redacted
-  deployment logs and either fix forward through `dev` or deploy the preceding
-  known-good application SHA. Do not downgrade the database.
-- If the `main` push succeeds but the tag push fails, retry only the intended
-  tag push after verifying where it points.
-- If a published tag or release message is wrong, create a new patch version;
-  do not rewrite published history.
-- If the final `dev` synchronization fails, production remains authoritative;
-  repair and synchronize `dev` before routine work resumes.
-
-## Release note template
-
-```text
-vX.Y.Z - <short title>
-
-<One short paragraph describing the release's intent and impact.>
-
-- <Meaningful change 1>
-- <Meaningful change 2>
-- <Meaningful change 3>
-```
+If the tag push fails, verify it points to the intended release merge commit
+and retry that one ref. Once a tag or release is published, correct mistakes in
+a new patch release and preserve the published tag.

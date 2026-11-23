@@ -71,4 +71,5 @@ token for MCP OAuth.
 | [Errors](docs/errors.md) | HTTP, OAuth, and MCP tool error contracts |
 | [Development](docs/development.md) | Local setup and validation for contributors |
 | [Deployment](docs/deployment.md) | Public-safe deployment mechanics |
+| [Git workflow](docs/git-workflow.md) | Feature branches, CI, and Purrequest |
 | [Release runbook](docs/release.md) | Versioning, promotion, verification, and publication |

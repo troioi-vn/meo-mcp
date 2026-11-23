@@ -137,7 +137,7 @@ def test_public_documentation_has_no_private_inventory_markers() -> None:
 
 
 def test_ci_commit_messages_are_read_from_runtime_environment() -> None:
-    workflow = (ROOT / ".woodpecker" / "test.yml").read_text()
+    workflow = (ROOT / ".woodpecker" / "deploy.yml").read_text()
 
     assert '"${CI_COMMIT_MESSAGE}"' not in workflow
     assert workflow.count('"$${CI_COMMIT_MESSAGE}"') == 5
