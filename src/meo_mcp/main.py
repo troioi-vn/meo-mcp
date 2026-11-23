@@ -11,13 +11,15 @@ from datetime import date, datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from typing import Annotated, Literal
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote_plus, urlsplit
 
 import structlog
 import uvicorn
 from mcp.server import MCPServer
+from mcp.server.auth.routes import build_metadata
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.caching import CacheHint
+from mcp.server.extension import Extension
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import (
     BlobResourceContents,
@@ -26,7 +28,7 @@ from mcp.types import (
     ImageContent,
     TextContent,
 )
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -36,7 +38,15 @@ from starlette.routing import Mount, Route
 from .config import Settings, get_settings
 from .database import make_session_factory
 from .meo_api import MeoApi, MeoApiError
-from .oauth import ALLOWED_SCOPES, DEFAULT_SCOPES, DatabaseOAuthProvider
+from .oauth import (
+    ALLOWED_SCOPES,
+    CLIENT_CREDENTIALS_EXTENSION,
+    CLIENT_CREDENTIALS_GRANT,
+    DEFAULT_SCOPES,
+    ClientCredentialsError,
+    DatabaseOAuthProvider,
+    exchange_client_credentials,
+)
 from .security import redact_log_event
 
 logger = structlog.get_logger()
@@ -254,6 +264,36 @@ class GuardMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class ClientCredentialsExtension(Extension):
+    """Advertises the ext-auth client_credentials flow in server capabilities."""
+
+    identifier = CLIENT_CREDENTIALS_EXTENSION
+
+
+def client_credentials_from(request: Request, form: dict[str, list[str]]) -> tuple[str, str]:
+    """RFC 6749 2.3.1: HTTP Basic or form fields, never both."""
+    header = request.headers.get("authorization", "")
+    in_form = "client_id" in form or "client_secret" in form
+    if header.lower().startswith("basic "):
+        if in_form:
+            raise ClientCredentialsError(
+                "invalid_request", "Use one client authentication method.", 400
+            )
+        try:
+            decoded = base64.b64decode(header[6:].strip(), validate=True).decode()
+            raw_id, raw_secret = decoded.split(":", 1)
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise ClientCredentialsError(
+                "invalid_client", "Client authentication failed.", 401
+            ) from exc
+        return unquote_plus(raw_id), unquote_plus(raw_secret)
+    client_id = form.get("client_id", [""])[0]
+    client_secret = form.get("client_secret", [""])[0]
+    if not client_id or not client_secret:
+        raise ClientCredentialsError("invalid_client", "Client authentication failed.", 401)
+    return client_id, client_secret
+
+
 def create_app(settings: Settings | None = None) -> Starlette:
     settings = settings or get_settings()
     # httpx logs complete request URLs at INFO. Keep transport diagnostics at
@@ -299,6 +339,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         # here varies by grant, but a shared intermediary caching an authorized
         # response buys us nothing worth reasoning about.
         cache_hints={"tools/list": CacheHint(ttl_ms=3_600_000, scope="private")},
+        extensions=[ClientCredentialsExtension()] if settings.agent_clients_enabled else None,
     )
 
     read_annotations = {
@@ -2813,6 +2854,90 @@ def create_app(settings: Settings | None = None) -> Starlette:
             )
             return JSONResponse({"error": "authorization_failed"}, status_code=400)
 
+    mcp_app = server.streamable_http_app(
+        json_response=True,
+        stateless_http=True,
+        max_request_body_size=MAX_REQUEST_BODY_BYTES,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=[public_host, f"{public_host}:*"],
+            allowed_origins=settings.allowed_origins,
+        ),
+    )
+
+    metadata = build_metadata(
+        AnyHttpUrl(settings.issuer),
+        None,
+        ClientRegistrationOptions(
+            enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=DEFAULT_SCOPES
+        ),
+        RevocationOptions(enabled=True),
+    )
+    if settings.agent_clients_enabled:
+        metadata.grant_types_supported = [
+            *(metadata.grant_types_supported or []),
+            CLIENT_CREDENTIALS_GRANT,
+        ]
+    metadata_body = metadata.model_dump(mode="json", exclude_none=True)
+
+    # GET only: OPTIONS falls through to the SDK's CORS handling under Mount.
+    async def authorization_server_metadata(_: Request) -> Response:
+        return JSONResponse(metadata_body, headers={"Cache-Control": "public, max-age=3600"})
+
+    token_error_headers = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+
+    class TokenEndpoint:
+        """POST /token: client_credentials here, every other grant to the SDK.
+
+        The body is read once and replayed, so the SDK handler sees the
+        request exactly as the client sent it.
+        """
+
+        async def __call__(self, scope, receive, send) -> None:
+            request = Request(scope, receive)
+            body = await request.body()
+            form = parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
+            if not settings.agent_clients_enabled or form.get("grant_type") != [
+                CLIENT_CREDENTIALS_GRANT
+            ]:
+                sent = False
+
+                async def replay():
+                    nonlocal sent
+                    if sent:
+                        return await receive()
+                    sent = True
+                    return {"type": "http.request", "body": body, "more_body": False}
+
+                await mcp_app(scope, replay, send)
+                return
+
+            response = await self.client_credentials(request, form)
+            await response(scope, receive, send)
+
+        async def client_credentials(self, request: Request, form) -> Response:
+            basic = request.headers.get("authorization", "").lower().startswith("basic ")
+            try:
+                client_id, client_secret = client_credentials_from(request, form)
+                raw_scope = form.get("scope", [None])[0]
+                scopes = raw_scope.split() if raw_scope is not None else None
+                issued = await exchange_client_credentials(
+                    provider, client_id, client_secret, scopes
+                )
+            except ClientCredentialsError as exc:
+                logger.info("client_credentials_refused", error=exc.error)
+                headers = dict(token_error_headers)
+                if exc.status_code == 401 and basic:
+                    headers["WWW-Authenticate"] = 'Basic realm="meo-mcp"'
+                return JSONResponse(
+                    {"error": exc.error, "error_description": exc.description},
+                    status_code=exc.status_code,
+                    headers=headers,
+                )
+            return JSONResponse(
+                issued.model_dump(mode="json", exclude_none=True), headers=token_error_headers
+            )
+
     @asynccontextmanager
     async def lifespan(_: Starlette):
         async with server.session_manager.run():
@@ -2826,19 +2951,13 @@ def create_app(settings: Settings | None = None) -> Starlette:
             Route("/.well-known/oauth-protected-resource", protected_resource),
             Route("/.well-known/oauth-protected-resource/mcp", protected_resource),
             Route("/oauth/meo/callback", meo_callback),
-            Mount(
-                "/",
-                server.streamable_http_app(
-                    json_response=True,
-                    stateless_http=True,
-                    max_request_body_size=MAX_REQUEST_BODY_BYTES,
-                    transport_security=TransportSecuritySettings(
-                        enable_dns_rebinding_protection=True,
-                        allowed_hosts=[public_host, f"{public_host}:*"],
-                        allowed_origins=settings.allowed_origins,
-                    ),
-                ),
+            Route(
+                "/.well-known/oauth-authorization-server",
+                authorization_server_metadata,
+                methods=["GET"],
             ),
+            Route("/token", TokenEndpoint(), methods=["POST"]),
+            Mount("/", mcp_app),
         ],
         lifespan=lifespan,
     )

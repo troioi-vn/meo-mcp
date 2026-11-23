@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
 
@@ -516,3 +516,104 @@ class DatabaseOAuthProvider(
         except Exception:
             return
         await self._revoke_meo_token(delegated_token)
+
+
+CLIENT_CREDENTIALS_GRANT = "client_credentials"
+CLIENT_CREDENTIALS_EXTENSION = "io.modelcontextprotocol/oauth-client-credentials"
+
+
+class ClientCredentialsError(Exception):
+    """An RFC 6749 token-endpoint error for the client_credentials grant."""
+
+    def __init__(self, error: str, description: str, status_code: int = 400):
+        super().__init__(error)
+        self.error = error
+        self.description = description
+        self.status_code = status_code
+
+
+async def exchange_client_credentials(
+    provider: DatabaseOAuthProvider,
+    client_id: str,
+    client_secret: str,
+    scopes: list[str] | None,
+) -> OAuthToken:
+    """Trade a Meo agent client's credentials for an MCP access token.
+
+    Meo is the authority: it checks the secret, the account, the client's
+    expiry and the scope subset, and mints a Sanctum token that lives at most
+    an hour. The gateway keeps that token encrypted on a grant that expires
+    with it, so nothing long-lived sits here and no refresh token is issued.
+    """
+    settings = provider.settings
+    if scopes is not None and (
+        not scopes
+        or len(set(scopes)) != len(scopes)
+        or any(scope not in ALLOWED_SCOPES for scope in scopes)
+    ):
+        raise ClientCredentialsError("invalid_scope", "Requested scope is not supported.")
+
+    body: dict = {"client_id": client_id, "client_secret": client_secret}
+    if scopes is not None:
+        body["scopes"] = scopes
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{str(settings.meo_base_url).rstrip('/')}/api/mcp-auth/agent-token",
+                json=body,
+                headers={"Authorization": f"Bearer {settings.meo_connector_api_key}"},
+            )
+    except httpx.HTTPError as exc:
+        raise ClientCredentialsError("server_error", "Meo is unavailable.", 503) from exc
+
+    if response.status_code == 401:
+        raise ClientCredentialsError("invalid_client", "Client authentication failed.", 401)
+    if response.status_code == 400:
+        raise ClientCredentialsError("invalid_scope", "Requested scope exceeds the client's.")
+    if response.status_code != 200:
+        raise ClientCredentialsError("server_error", "Meo token issuance failed.", 503)
+
+    payload = response.json().get("data")
+    try:
+        user_id = int(payload["user_id"])
+        granted = [str(scope) for scope in payload["scopes"]]
+        sanctum_token = str(payload["sanctum_token"])
+        upstream_expiry = as_utc(datetime.fromisoformat(str(payload["expires_at"])))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ClientCredentialsError("server_error", "Meo returned an invalid token.", 503) from exc
+    if not granted or any(scope not in ALLOWED_SCOPES for scope in granted):
+        raise ClientCredentialsError("server_error", "Meo returned unsupported scopes.", 503)
+
+    expiry = min(now() + ACCESS_TOKEN_TTL, upstream_expiry)
+    if expiry <= now():
+        raise ClientCredentialsError("invalid_client", "Client authentication failed.", 401)
+
+    access_value = token()
+    async with provider.sessions() as session:
+        grant = Grant(
+            client_id=client_id,
+            subject=str(user_id),
+            scopes=granted,
+            delegated_token_ciphertext=provider.cipher.encrypt(sanctum_token),
+            expires_at=expiry,
+        )
+        session.add(grant)
+        await session.flush()
+        session.add(
+            AccessTokenRecord(
+                token_hash=digest(access_value),
+                grant_id=grant.id,
+                client_id=client_id,
+                scopes=granted,
+                subject=str(user_id),
+                resource=settings.resource,
+                expires_at=expiry,
+            )
+        )
+        await session.commit()
+
+    return OAuthToken(
+        access_token=access_value,
+        expires_in=max(1, int((expiry - now()).total_seconds())),
+        scope=" ".join(granted),
+    )
