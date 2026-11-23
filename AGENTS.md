@@ -15,7 +15,7 @@ Things you will otherwise reach for and get wrong:
 - `httpx`, not `requests`. Async throughout.
 - `structlog` via `security.redact_log_event`, not stdlib `logging`. Direct logging bypasses redaction.
 - `security.now()` and `as_utc()`, not `datetime.utcnow()`. Naive SQLite test timestamps and aware Postgres ones both need it, or comparisons shift silently.
-- Woodpecker (`.woodpecker.yml`), not GitHub Actions.
+- Woodpecker (`.woodpecker/test.yml`, `.woodpecker/deploy.yml`), not GitHub Actions. PRs run only `test` and report the required `ci/woodpecker/pr/test`; `deploy` runs on `dev`/`main` pushes after `test` passes on the same SHA.
 
 ## Invariants
 

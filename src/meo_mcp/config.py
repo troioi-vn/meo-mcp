@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     token_encryption_key: str = ""
     allowed_origins: list[str] = Field(default_factory=list)
     log_level: str = "INFO"
+    # Headless agents: client_credentials against Meo agent clients.
+    agent_clients_enabled: bool = False
 
     @property
     def issuer(self) -> str:
