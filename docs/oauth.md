@@ -102,6 +102,58 @@ Detailed behavior:
    credentials. Refresh requests may omit `resource` and retain the refresh
    token's already-bound MCP audience; if they supply it, it must be exact.
 
+## Client-credentials flow for headless agents
+
+An agent with no browser (a server, a scheduled job, an agent host such as
+OpenClaw) cannot complete the consent redirect. For those, the gateway
+implements the official ext-auth extension
+`io.modelcontextprotocol/oauth-client-credentials` with client secrets.
+
+The credential is a Meo **agent client**: the user creates it on Meo's
+Developer page, chooses its scopes and an optional expiry, and is shown a
+`meo_ac_...` client id and a `meo_agent_...` secret once. Meo stores only the
+secret's SHA-256 digest. The gateway never stores the secret: it forwards it
+to Meo for the exchange and drops it. It does keep the client id on the grant
+and the access token it issues, as it does for every OAuth client, so logs and
+revocation can name the agent.
+
+```text
+agent                          meo-mcp                        Meo
+  │ POST /token                    │                             │
+  │ grant_type=client_credentials  │                             │
+  │ resource, [scope], client auth │                             │
+  │───────────────────────────────▶│ POST /api/mcp-auth/agent-token (connector key)
+  │                                ├────────────────────────────▶│ check secret, account,
+  │                                │                             │ expiry, scope subset
+  │                                │◀── user id, scopes, Sanctum token (≤ 1 hour)
+  │◀── opaque access token, no refresh token ──────────────────────│
+```
+
+1. Client authentication is `client_secret_basic` or `client_secret_post`,
+   never both. `resource` must name this MCP endpoint, as for every grant.
+2. An omitted `scope` means every scope the agent client holds; a requested
+   scope outside that set is `invalid_scope`.
+3. Meo mints a fresh Sanctum token that expires within an hour, and never
+   after the agent client itself. The gateway stores it encrypted on a grant
+   that expires with it and issues an access token that cannot outlive it.
+4. No refresh token is issued: the agent repeats the exchange when its token
+   expires. Every refusal from Meo is `invalid_client` (or `invalid_scope`), so
+   the response does not say which part of the credential was wrong.
+5. Revoking the agent client in Meo deletes every token minted for it, so the
+   agent's next tool call fails at once even if its access token is unexpired.
+
+Exchanges succeed only when both flags are on: `AGENT_CLIENTS_ENABLED=true`
+here and `MCP_AGENT_CLIENTS_ENABLED=true` in Meo. Discovery follows the
+gateway flag alone: with it on, `client_credentials` appears in
+`grant_types_supported` and the extension under `capabilities.extensions` in
+`server/discover`, whatever Meo says. If only the gateway flag is on, every
+exchange gets `invalid_client`, so turn Meo's flag on first and the
+gateway's second. Repeated `client_id`, `client_secret` or `scope` parameters
+are `invalid_request`.
+
+`private_key_jwt` assertions are not supported yet. Add them when an agent
+needs a credential that never leaves its host.
+
 ## Current scope mapping
 
 | MCP scope | Consent meaning | Delegated Sanctum ability | Used by |
@@ -142,6 +194,7 @@ advertised before a tool needs it.
 | MCP access token | 1 hour | Only a SHA-256 digest is stored |
 | Grant and refresh capability | At most 90 days | Grant expiry caps every rotated refresh token |
 | Delegated Sanctum token | Grant lifetime or earlier revocation | AES-256-GCM ciphertext at rest |
+| Agent-client grant and its Sanctum token | At most 1 hour, never past the agent client's expiry | Same ciphertext storage; no refresh token |
 
 Refresh tokens rotate on every successful use. Reusing a consumed refresh token
 is treated as replay: the entire refresh family, all access tokens for the grant,

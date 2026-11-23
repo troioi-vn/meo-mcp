@@ -12,6 +12,9 @@ Do not configure a bearer token manually. Point the client at
 `<MCP_BASE_URL>/mcp`; OAuth discovery supplies the authorization server and the
 currently advertised narrow read and write scopes.
 
+An agent that runs without a browser uses an agent client instead; see
+[Headless agents](#headless-agents-client-credentials).
+
 ## Generic flow
 
 1. Add a remote **Streamable HTTP** server named `meo-mai-moi` with URL
@@ -235,6 +238,36 @@ curl -fsS <MCP_BASE_URL>/.well-known/oauth-authorization-server
 Expected invariants are `{"status":"ok"}`, resource metadata naming
 `<MCP_BASE_URL>/mcp`, and authorization metadata advertising `S256` plus only
 the scopes currently listed in [tools.md](tools.md).
+
+## Headless agents (client credentials)
+
+For an agent with no browser, create an **agent client** on Meo's Developer
+page. Choose the narrowest scopes that cover the work; the page shows the
+client id and secret once. Store the secret in a secret manager, never in a
+repository or a chat.
+
+The agent trades them for an access token at `<MCP_BASE_URL>/token`:
+
+```bash
+curl -s <MCP_BASE_URL>/token \
+  -u "$MEO_CLIENT_ID:$MEO_CLIENT_SECRET" \
+  -d grant_type=client_credentials \
+  -d resource=<MCP_BASE_URL>/mcp
+```
+
+The response carries `access_token` and `expires_in` (at most an hour) and no
+refresh token. Send `Authorization: Bearer <access_token>` on MCP requests and
+repeat the exchange when it expires or a call returns `401`. SDK clients can
+use the Python SDK's `ClientCredentialsOAuthProvider` or the TypeScript SDK's
+`ClientCredentialsProvider`.
+
+Claude Code has no native client-credentials support, but a `headersHelper`
+script can do the exchange and print `{"Authorization": "Bearer ..."}`. Keep it
+under Claude Code's 10-second helper timeout by caching the access token until
+shortly before `expires_in`.
+
+Revoke the agent client on the Developer page to cut the agent off. Its
+Sanctum tokens are deleted at once, so the next tool call fails.
 
 ## Troubleshooting
 
