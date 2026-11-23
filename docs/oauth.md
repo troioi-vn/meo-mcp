@@ -112,7 +112,10 @@ implements the official ext-auth extension
 The credential is a Meo **agent client**: the user creates it on Meo's
 Developer page, chooses its scopes and an optional expiry, and is shown a
 `meo_ac_...` client id and a `meo_agent_...` secret once. Meo stores only the
-secret's SHA-256 digest. The gateway stores nothing about the client.
+secret's SHA-256 digest. The gateway never stores the secret: it forwards it
+to Meo for the exchange and drops it. It does keep the client id on the grant
+and the access token it issues, as it does for every OAuth client, so logs and
+revocation can name the agent.
 
 ```text
 agent                          meo-mcp                        Meo
@@ -139,10 +142,14 @@ agent                          meo-mcp                        Meo
 5. Revoking the agent client in Meo deletes every token minted for it, so the
    agent's next tool call fails at once even if its access token is unexpired.
 
-The grant is off unless `AGENT_CLIENTS_ENABLED=true` here and
-`MCP_AGENT_CLIENTS_ENABLED=true` in Meo. When on, `client_credentials` appears
-in `grant_types_supported` and the extension appears under
-`capabilities.extensions` in `server/discover`.
+Exchanges succeed only when both flags are on: `AGENT_CLIENTS_ENABLED=true`
+here and `MCP_AGENT_CLIENTS_ENABLED=true` in Meo. Discovery follows the
+gateway flag alone: with it on, `client_credentials` appears in
+`grant_types_supported` and the extension under `capabilities.extensions` in
+`server/discover`, whatever Meo says. If only the gateway flag is on, every
+exchange gets `invalid_client`, so turn Meo's flag on first and the
+gateway's second. Repeated `client_id`, `client_secret` or `scope` parameters
+are `invalid_request`.
 
 `private_key_jwt` assertions are not supported yet. Add them when an agent
 needs a credential that never leaves its host.

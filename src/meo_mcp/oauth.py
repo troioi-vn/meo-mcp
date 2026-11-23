@@ -574,13 +574,15 @@ async def exchange_client_credentials(
     if response.status_code != 200:
         raise ClientCredentialsError("server_error", "Meo token issuance failed.", 503)
 
-    payload = response.json().get("data")
     try:
+        payload = response.json()["data"]
         user_id = int(payload["user_id"])
         granted = [str(scope) for scope in payload["scopes"]]
         sanctum_token = str(payload["sanctum_token"])
         upstream_expiry = as_utc(datetime.fromisoformat(str(payload["expires_at"])))
-    except (KeyError, TypeError, ValueError) as exc:
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        # Covers a non-JSON body (JSONDecodeError is a ValueError) and a
+        # body that is not an object.
         raise ClientCredentialsError("server_error", "Meo returned an invalid token.", 503) from exc
     if not granted or any(scope not in ALLOWED_SCOPES for scope in granted):
         raise ClientCredentialsError("server_error", "Meo returned unsupported scopes.", 503)

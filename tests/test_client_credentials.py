@@ -267,3 +267,36 @@ async def test_agent_token_reaches_tools(tmp_path) -> None:
     assert called.json()["result"]["isError"] is False
     assert pets.calls[0].request.headers["Authorization"] == "Bearer 9|agent-sanctum"
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_malformed_upstream_bodies_and_repeated_fields_are_oauth_errors(tmp_path) -> None:
+    engine, sessions, _, _, client = await gateway(tmp_path, "malformed.db")
+    creds = "client_id=a&client_secret=b&grant_type=client_credentials&resource=" + RESOURCE
+    urlencoded = {"Content-Type": "application/x-www-form-urlencoded"}
+    with respx.mock:
+        route = respx.post(AGENT_TOKEN_URL)
+        async with client:
+            route.mock(return_value=httpx.Response(200, text="<html>oops</html>"))
+            not_json = await client.post("/token", data=form(client_id="a", client_secret="b"))
+            route.mock(return_value=httpx.Response(200, json=["not", "an", "object"]))
+            not_object = await client.post("/token", data=form(client_id="a", client_secret="b"))
+            route.mock(return_value=issued())
+            two_scopes = await client.post(
+                "/token",
+                content=creds + "&scope=pets:read&scope=pets:write",
+                headers=urlencoded,
+            )
+            two_ids = await client.post(
+                "/token", content=creds + "&client_id=c", headers=urlencoded
+            )
+
+    for response in (not_json, not_object):
+        assert (response.status_code, response.json()["error"]) == (503, "server_error")
+        assert response.headers["cache-control"] == "no-store"
+    for response in (two_scopes, two_ids):
+        assert (response.status_code, response.json()["error"]) == (400, "invalid_request")
+    assert route.call_count == 2
+    async with sessions() as session:
+        assert (await session.scalars(select(Grant))).all() == []
+    await engine.dispose()

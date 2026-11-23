@@ -270,6 +270,16 @@ class ClientCredentialsExtension(Extension):
     identifier = CLIENT_CREDENTIALS_EXTENSION
 
 
+def single_form_value(form: dict[str, list[str]], name: str) -> str | None:
+    """RFC 6749 3.2: a token request parameter must not repeat."""
+    values = form.get(name)
+    if values is None:
+        return None
+    if len(values) != 1:
+        raise ClientCredentialsError("invalid_request", f"Repeated parameter: {name}.", 400)
+    return values[0]
+
+
 def client_credentials_from(request: Request, form: dict[str, list[str]]) -> tuple[str, str]:
     """RFC 6749 2.3.1: HTTP Basic or form fields, never both."""
     header = request.headers.get("authorization", "")
@@ -287,8 +297,8 @@ def client_credentials_from(request: Request, form: dict[str, list[str]]) -> tup
                 "invalid_client", "Client authentication failed.", 401
             ) from exc
         return unquote_plus(raw_id), unquote_plus(raw_secret)
-    client_id = form.get("client_id", [""])[0]
-    client_secret = form.get("client_secret", [""])[0]
+    client_id = single_form_value(form, "client_id") or ""
+    client_secret = single_form_value(form, "client_secret") or ""
     if not client_id or not client_secret:
         raise ClientCredentialsError("invalid_client", "Client authentication failed.", 401)
     return client_id, client_secret
@@ -311,6 +321,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
     provider = DatabaseOAuthProvider(sessions, settings)
     api = MeoApi(sessions, settings)
     public_host = settings.public_base_url.host
+    # One copy for the SDK's routes and for the metadata we serve ourselves.
+    registration_options = ClientRegistrationOptions(
+        enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=DEFAULT_SCOPES
+    )
+    revocation_options = RevocationOptions(enabled=True)
     server = MCPServer(
         "Meo Mai Moi",
         version=SERVER_VERSION,
@@ -329,10 +344,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
             # is a second, independent gate.
             validate_token_resource=True,
             required_scopes=[],
-            client_registration_options=ClientRegistrationOptions(
-                enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=DEFAULT_SCOPES
-            ),
-            revocation_options=RevocationOptions(enabled=True),
+            client_registration_options=registration_options,
+            revocation_options=revocation_options,
         ),
         # The catalog is the same for every caller and only changes on deploy,
         # so a client may hold it for an hour. Keep the scope private: nothing
@@ -2868,10 +2881,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
     metadata = build_metadata(
         AnyHttpUrl(settings.issuer),
         None,
-        ClientRegistrationOptions(
-            enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=DEFAULT_SCOPES
-        ),
-        RevocationOptions(enabled=True),
+        registration_options,
+        revocation_options,
     )
     if settings.agent_clients_enabled:
         metadata.grant_types_supported = [
@@ -2919,7 +2930,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
             basic = request.headers.get("authorization", "").lower().startswith("basic ")
             try:
                 client_id, client_secret = client_credentials_from(request, form)
-                raw_scope = form.get("scope", [None])[0]
+                raw_scope = single_form_value(form, "scope")
                 scopes = raw_scope.split() if raw_scope is not None else None
                 issued = await exchange_client_credentials(
                     provider, client_id, client_secret, scopes

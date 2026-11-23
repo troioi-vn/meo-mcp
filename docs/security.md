@@ -82,7 +82,8 @@ substitutes.
   short-lived or single-use as appropriate.
 - Refresh replay and explicit revocation invalidate the entire local grant.
 - The client-credentials grant forwards the agent client's id and secret to
-  Meo over the authenticated connector and never stores either. Meo decides;
+  Meo over the authenticated connector. The secret is never stored; the id is
+  kept on the grant and access token, like any OAuth client id. Meo decides;
   the gateway keeps only the resulting Sanctum token, encrypted, for at most an
   hour, and issues no refresh token.
 
