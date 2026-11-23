@@ -1,0 +1,18 @@
+# PRs run only the gateway checks. Deploys wait for this workflow on their own SHA.
+when:
+  - event: pull_request
+  - event: [push, manual]
+    branch: [dev, main]
+
+labels:
+  hostname: caterver
+
+steps:
+  test:
+    image: python:3.12-slim
+    commands:
+      - pip install --no-cache-dir uv
+      - uv sync --all-groups
+      - uv run pytest -q
+      - uv run ruff check src tests scripts
+      - uv run ruff format --check src tests scripts

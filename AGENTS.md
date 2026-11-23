@@ -31,7 +31,7 @@ These fail silently: no type, test, or error reports them. Other rules here are 
 
 ## Branch and deploy
 
-Work lands on `dev`; pushing runs CI and deploys development. `main` deploys production after an accepted dev checkpoint, per `docs/release.md`. Keep Alembic migrations additive; no destructive downgrade during an incident.
+Open a short-lived branch and PR into `dev`. Woodpecker runs the test gate and Purrequest reviews same-repository feature PRs. Leave merges to the maintainer. Release an accepted `dev` deployment through a PR into `main`. See `docs/git-workflow.md` and `docs/release.md`. Keep Alembic migrations additive.
 
 ## How to finish
 

@@ -3,6 +3,8 @@
 This guide is for contributors to the gateway. If you are connecting an agent,
 start with [clients.md](clients.md) instead.
 
+Use [the Git workflow](git-workflow.md) to open a PR into `dev`.
+
 ## Local validation
 
 Python 3.12 and [`uv`](https://docs.astral.sh/uv/) are required. A fresh clone
