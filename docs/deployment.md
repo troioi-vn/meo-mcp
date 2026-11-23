@@ -22,13 +22,17 @@ local development or architecture comprehension.
 Follow the complete release procedure in [`release.md`](release.md). In
 summary:
 
-1. Push routine tested changes to `dev` and accept the development deployment.
-2. Promote the accepted commit to `main` through an intentional merge.
-3. CI runs tests, updates the remote checkout, applies Alembic migrations, rebuilds
-   Compose, and checks the environment's health. Operator-specific targets and
-   recovery commands live in the private runbook.
-4. Roll back by deploying the preceding branch SHA. Migrations are additive; do
-   not use a destructive downgrade during an incident.
+1. Merge a tested PR into `dev` and accept the development deployment.
+2. Open a release PR from `dev` into `main`. Merge it with a merge commit after
+   the required PR check passes and the maintainer approves promotion.
+3. Woodpecker runs `.woodpecker/test.yml` on the merged SHA. After it passes,
+   `.woodpecker/deploy.yml` applies Alembic migrations, rebuilds Compose, and
+   checks the environment's health.
+4. Roll back by deploying the preceding application SHA against the current
+   additive schema.
+
+PR pipelines run the test workflow. Deployment and its notifications run
+on `dev` and `main` push or manual events after the test workflow passes.
 
 ## Configuration
 
