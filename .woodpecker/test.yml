@@ -1,5 +1,5 @@
 when:
-  - event: [push, manual]
+  - event: [push, pull_request, manual]
 
 steps:
   test:
@@ -193,6 +193,7 @@ steps:
     when:
       - status: success
         branch: dev
+        event: [push, manual]
     depends_on:
       - deploy_dev
     environment:
@@ -243,6 +244,7 @@ steps:
     when:
       - status: success
         branch: main
+        event: [push, manual]
     depends_on:
       - deploy_prod
     environment:
@@ -298,6 +300,7 @@ steps:
     when:
       - status: failure
         branch: [dev, main]
+        event: [push, manual]
     environment:
       N8N_WEBHOOK_URL:
         from_secret: N8N_WEBHOOK_URL
