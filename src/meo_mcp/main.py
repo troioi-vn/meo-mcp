@@ -285,6 +285,9 @@ def create_app(settings: Settings | None = None) -> Starlette:
         auth=AuthSettings(
             issuer_url=settings.issuer,
             resource_server_url=settings.resource,
+            # load_access_token already refuses other audiences; the SDK check
+            # is a second, independent gate.
+            validate_token_resource=True,
             required_scopes=[],
             client_registration_options=ClientRegistrationOptions(
                 enabled=True, valid_scopes=ALLOWED_SCOPES, default_scopes=DEFAULT_SCOPES
